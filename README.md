@@ -18,6 +18,7 @@
 5. 设置环境变量，运行 `npm start`。
 6. 根据“端到端验收”逐项验证。
 7. 使用 systemd、PM2 或容器重启策略保持进程运行。
+8. 钉钉 Stream 长连接可能出现假在线或停止收消息；使用 PM2 部署时，配置 crontab 每 10 分钟重启一次进程。
 
 不要修改钉钉入站字段名。传给 `handleDingTalkMessage(data)` 的 `data` 是钉钉机器人回调原始数据对象。
 
@@ -167,6 +168,21 @@ pm2 start src/index.js --name grokbot-dingtalk
 pm2 save
 ```
 
-或用 systemd、Docker、云平台托管进程。必须配置异常退出后自动重启，并通过环境变量注入密钥。
+然后让部署本项目的 AI 执行 `command -v pm2` 和 `command -v flock`，把所得绝对路径填入 crontab。不要直接假定 cron 能找到 Node.js 或 PM2：
+
+```cron
+*/10 * * * * /absolute/path/to/flock -n /tmp/grokbot-dingtalk-restart.lock /absolute/path/to/pm2 restart grokbot-dingtalk --update-env 2>&1 | /usr/bin/logger -t grokbot-dingtalk-restart
+```
+
+配置后执行：
+
+```bash
+crontab -l
+pm2 status grokbot-dingtalk
+```
+
+确认 cron 已保存、PM2 进程名准确。定时重启可能打断正在处理的单条消息，并会清空进程内的 10 分钟消息去重缓存；钉钉若在重启窗口重投，仍可能再次触发 Grokbot。不要把定时重启误认为零丢失或永久去重。
+
+也可用 systemd、Docker、云平台托管进程，但除异常退出自动重启外，仍应配置每 10 分钟主动重启，并通过环境变量注入密钥。
 
 日志只保留排障所需的 `msgId` 和简短错误。不要输出用户完整消息、`Client Secret` 或完整 `sessionWebhook`。

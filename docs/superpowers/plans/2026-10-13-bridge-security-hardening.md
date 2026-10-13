@@ -160,7 +160,12 @@ git commit -m "fix: guard webhook dispatch abuse"
 ### Task 5: Full verification
 
 **Files:**
+- Modify: `README.md`
 - Verify all modified files
+
+- [ ] **Step 0: Document scheduled connection recovery**
+
+Tell the deploying AI to resolve absolute `pm2` and `flock` paths, add a locked crontab entry that restarts `grokbot-dingtalk` every 10 minutes, and verify both crontab and PM2 state. Warn that restart interrupts in-flight work and clears the in-memory deduplication cache.
 
 - [ ] **Step 1: Run full tests**
 

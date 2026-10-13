@@ -38,6 +38,8 @@ Invalid targets fail before `fetch` runs.
 
 Cache is intentionally process-local. Restart clears it.
 
+Deployment documentation must tell the deploying AI to configure a locked PM2 cron restart every 10 minutes as an operational workaround for unreliable long-lived DingTalk Stream connections. It must also state that each restart clears this deduplication cache and can interrupt an in-flight message.
+
 ## Rate limiting
 
 Apply fixed-window, in-memory limits before calling Grokbot:
