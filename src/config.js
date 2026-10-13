@@ -7,6 +7,19 @@ export function resolveWebhookSecret(env = process.env) {
   return auth;
 }
 
+export function validateWebhookUrl(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("Invalid GROKBOT_WEBHOOK_URL: HTTPS URL without embedded credentials required");
+  }
+  if (url.protocol !== "https:" || url.username || url.password) {
+    throw new Error("Invalid GROKBOT_WEBHOOK_URL: HTTPS URL without embedded credentials required");
+  }
+  return url.toString();
+}
+
 export function loadConfig(env = process.env) {
   const values = {
     DINGTALK_CLIENT_ID: env.DINGTALK_CLIENT_ID?.trim(),
@@ -18,6 +31,7 @@ export function loadConfig(env = process.env) {
   if (missing.length > 0) {
     throw new Error(`Missing required environment variables: ${missing.join(", ")}`);
   }
+  validateWebhookUrl(values.GROKBOT_WEBHOOK_URL);
   return {
     clientId: values.DINGTALK_CLIENT_ID,
     clientSecret: values.DINGTALK_CLIENT_SECRET,

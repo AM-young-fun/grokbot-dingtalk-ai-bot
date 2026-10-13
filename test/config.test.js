@@ -18,3 +18,16 @@ test("secret falls back to GROKBOT_WEBHOOK_AUTH with prefixes stripped", () => {
   assert.equal(resolveWebhookSecret({ GROKBOT_WEBHOOK_AUTH: "abc" }), "abc");
   assert.equal(resolveWebhookSecret({ GROKBOT_WEBHOOK_SECRET: "x", GROKBOT_WEBHOOK_AUTH: "Bearer y" }), "x");
 });
+
+test("Grokbot webhook must be HTTPS without embedded credentials", () => {
+  for (const webhookUrl of [
+    "http://hook.test/x",
+    "not a URL",
+    "https://user:pass@hook.test/x",
+  ]) {
+    assert.throws(
+      () => loadConfig({ ...full, GROKBOT_WEBHOOK_URL: webhookUrl }),
+      /Invalid GROKBOT_WEBHOOK_URL/,
+    );
+  }
+});
