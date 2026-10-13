@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createRobotCallbackHandler } from "../src/runtime.js";
 import { forwardToGrokbot } from "../src/webhook.js";
+import { createMessageGuard } from "../src/guard.js";
 
 const config = { webhookUrl: "https://hook.test/w", webhookSecret: "sek" };
 const single = { conversationType: "1", msgtype: "text", text: { content: "q" }, msgId: "m1", sessionWebhook: "https://s.test" };
@@ -118,4 +119,84 @@ test("malformed callback ACKs failure", async () => {
   const { acks, handler } = setup();
   await handler({ headers: { messageId: "c" }, data: "{" });
   assert.deepEqual(acks, [["c", { success: false }]]);
+});
+
+test("missing msgId fails without forwarding", async () => {
+  const { acks, calls, handler } = setup();
+  await handler({ headers: { messageId: "c" }, data: { ...single, msgId: undefined } });
+  assert.equal(calls.length, 0);
+  assert.deepEqual(acks, [["c", { success: false }]]);
+});
+
+test("concurrent and later duplicates forward only once", async () => {
+  const acks = [];
+  let release;
+  let calls = 0;
+  const forward = async () => {
+    calls += 1;
+    await new Promise((resolve) => { release = resolve; });
+  };
+  const handler = createRobotCallbackHandler({
+    client: { socketCallBackResponse: (...args) => acks.push(args) },
+    config,
+    forward,
+    logger: { error() {} },
+  });
+  const first = handler({ headers: { messageId: "c1" }, data: single });
+  const concurrent = handler({ headers: { messageId: "c2" }, data: single });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(calls, 1);
+  release();
+  await Promise.all([first, concurrent]);
+  await handler({ headers: { messageId: "c3" }, data: single });
+  assert.equal(calls, 1);
+  assert.deepEqual(acks, [
+    ["c1", { success: true, handled: true }],
+    ["c2", { success: true, handled: true, duplicate: true }],
+    ["c3", { success: true, handled: true, duplicate: true }],
+  ]);
+});
+
+test("failed forwarding releases msgId for retry", async () => {
+  const acks = [];
+  let calls = 0;
+  const forward = async () => {
+    calls += 1;
+    if (calls === 1) {
+      const error = new Error("WEBHOOK_NETWORK");
+      error.code = "WEBHOOK_NETWORK";
+      error.status = 0;
+      throw error;
+    }
+  };
+  const handler = createRobotCallbackHandler({
+    client: { socketCallBackResponse: (...args) => acks.push(args) },
+    config,
+    forward,
+    logger: { error() {} },
+  });
+  await handler({ headers: { messageId: "c1" }, data: single });
+  await handler({ headers: { messageId: "c2" }, data: single });
+  assert.equal(calls, 2);
+  assert.deepEqual(acks, [
+    ["c1", { success: false }],
+    ["c2", { success: true, handled: true }],
+  ]);
+});
+
+test("rate-limited messages are ACKed without forwarding", async () => {
+  const acks = [], calls = [], errors = [];
+  const guard = createMessageGuard({ perSenderLimit: 1, globalLimit: 10 });
+  const handler = createRobotCallbackHandler({
+    client: { socketCallBackResponse: (...args) => acks.push(args) },
+    config,
+    guard,
+    forward: async (data) => calls.push(data.msgId),
+    logger: { error: (...args) => errors.push(args) },
+  });
+  await handler({ headers: { messageId: "c1" }, data: single });
+  await handler({ headers: { messageId: "c2" }, data: { ...single, msgId: "m2" } });
+  assert.deepEqual(calls, ["m1"]);
+  assert.deepEqual(acks[1], ["c2", { success: true, handled: false, limited: true }]);
+  assert.deepEqual(errors, [["DingTalk message rate limited", { msgId: "m2", code: "MESSAGE_RATE_LIMITED" }]]);
 });
