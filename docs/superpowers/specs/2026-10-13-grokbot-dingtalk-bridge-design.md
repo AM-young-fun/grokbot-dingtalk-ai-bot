@@ -25,7 +25,7 @@
 - Stream 客户端：连接钉钉、订阅机器人消息、处理重连。
 - 消息过滤器：群聊仅接受 `conversationType === "2"` 且 `isInAtList === true` 的消息；单聊接受文本消息。
 - Webhook 转发器：把钉钉原始 `data` 作为 JSON POST 到 `GROKBOT_WEBHOOK_URL`，使用 Bearer 密钥鉴权。
-- Grokbot webhook：唤醒 Grokbot；Grokbot自行判断、使用记忆和工具，并通过 `data.sessionWebhook` 回复钉钉。
+- Grokbot webhook：唤醒 Grokbot；Grokbot自行判断、使用记忆和工具。群聊使用机器人群消息 OpenAPI 引用并 `@` 提问人；单聊通过 `data.sessionWebhook` 回复。
 - ACK：Grokbot webhook 接受消息后立即向钉钉确认，不等待 Grokbot 完成作答。
 - 配置层：从环境变量读取凭据并在启动时校验。
 
@@ -58,7 +58,7 @@ await fetch(process.env.GROKBOT_WEBHOOK_URL, {
 
 请求体就是钉钉原始 `data`，不增加外层包装、不重命名字段。`data` 保留钉钉字段，包括但不限于 `senderId`、`senderNick`、`conversationId`、`conversationType`、`msgId`、`msgtype`、`isInAtList`、`sessionWebhook` 和 `sessionWebhookExpiredTime`。具体字段以钉钉实际回调为准。
 
-Grokbot 使用当前消息的 `sessionWebhook` 回复，出站请求体遵循钉钉文本消息格式：
+单聊时，Grokbot 使用当前消息的 `sessionWebhook` 回复，出站请求体遵循钉钉文本消息格式：
 
 ```json
 {
@@ -71,6 +71,16 @@ Grokbot 使用当前消息的 `sessionWebhook` 回复，出站请求体遵循钉
 
 `sessionWebhook` 有有效期，只用于回复对应入站会话，不作为长期主动推送地址保存。
 
+群聊时，最终答案必须以机器人身份调用钉钉群消息 OpenAPI，发送 Markdown，并同时满足：
+
+- 目标群：`data.conversationId`。
+- 机器人：`data.robotCode`。
+- 引用消息：`data.msgId`，作为被引用消息的 `openMessageId`。
+- 引用发送者：`data.senderId`，作为发送者 `openDingTalkId`。
+- `@` 提问人：`data.senderStaffId`，加入 `atUserIds`，正文同时包含对应 `@` 标记。
+
+若群聊回调缺少引用或 `@` 所需字段，Grokbot必须记录明确错误，不得退化成无引用、无 `@` 的普通群消息。
+
 ## 行为规则
 
 - 仅处理 `msgtype === "text"`。
@@ -81,6 +91,9 @@ Grokbot 使用当前消息的 `sessionWebhook` 回复，出站请求体遵循钉
 - Grokbot webhook 返回任意 `2xx` 即视为已接受，不把响应体当成答案。
 - webhook 接受后立即 ACK 钉钉，避免 Grokbot 长任务造成消息重投。
 - Grokbot 负责最终回复；连接层不等待、不生成、不代发答案。
+- 不发送“收到，正在思考”等中间文字。
+- webhook 接受成功后，可尽力给原消息添加 `👌` reaction；reaction 失败时静默，不影响 webhook 或 ACK。
+- 群聊最终答案必须引用原消息并 `@` 原提问人；单聊不引用、不 `@`。
 
 ## 错误处理
 
@@ -116,6 +129,8 @@ test/webhook.test.js
 - webhook 请求体等于钉钉原始 `data`。
 - webhook 使用 Bearer 密钥。
 - webhook `2xx` 后 ACK 成功；失败或超时后 ACK 失败。
+- 不发送中间提示文字；可选 `👌` reaction 失败不影响主流程。
+- 群聊最终回复使用 `conversationId`、`robotCode`、`msgId`、`senderId` 和 `senderStaffId` 完成引用与 `@`。
 - 缺少配置时拒绝启动。
 
 上线验收必须在真实钉钉环境完成：
