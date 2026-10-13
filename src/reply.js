@@ -39,6 +39,30 @@ export function redactWebhook(value) {
   }
 }
 
+export function validateSessionWebhook(value) {
+  let url;
+  try {
+    url = new URL(value);
+  } catch {
+    const error = new Error("Invalid DingTalk sessionWebhook");
+    error.code = "INVALID_SESSION_WEBHOOK";
+    throw error;
+  }
+  if (
+    url.protocol !== "https:"
+    || url.hostname !== "oapi.dingtalk.com"
+    || (url.port && url.port !== "443")
+    || url.pathname !== "/robot/sendBySession"
+    || url.username
+    || url.password
+  ) {
+    const error = new Error("Invalid DingTalk sessionWebhook");
+    error.code = "INVALID_SESSION_WEBHOOK";
+    throw error;
+  }
+  return url.toString();
+}
+
 async function postSession(sessionWebhook, body, fetchImpl) {
   const response = await fetchImpl(sessionWebhook, {
     method: "POST",
@@ -60,8 +84,9 @@ export async function sendAnswer(data, answer, { fetchImpl = fetch, now = Date.n
   if (data.sessionWebhookExpiredTime && Number(data.sessionWebhookExpiredTime) < now()) {
     throw new Error("sessionWebhook expired");
   }
-  if (data.conversationType === "1") return postSession(data.sessionWebhook, buildTextReply(content), fetchImpl);
-  if (data.conversationType === "2") return postSession(data.sessionWebhook, buildGroupReply(data, content), fetchImpl);
+  const sessionWebhook = validateSessionWebhook(data.sessionWebhook);
+  if (data.conversationType === "1") return postSession(sessionWebhook, buildTextReply(content), fetchImpl);
+  if (data.conversationType === "2") return postSession(sessionWebhook, buildGroupReply(data, content), fetchImpl);
   throw new Error(`Unsupported conversationType: ${data.conversationType}`);
 }
 

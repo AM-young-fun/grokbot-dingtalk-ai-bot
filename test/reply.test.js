@@ -41,3 +41,32 @@ test("expired sessionWebhook and DingTalk errors reject", async () => {
 test("redacts webhook query", () => {
   assert.equal(redactWebhook(base.sessionWebhook), "https://oapi.dingtalk.com/robot/sendBySession");
 });
+
+test("rejects unsafe sessionWebhook before fetch", async () => {
+  const unsafe = [
+    "http://oapi.dingtalk.com/robot/sendBySession?session=x",
+    "https://evil.test/robot/sendBySession?session=x",
+    "https://user:pass@oapi.dingtalk.com/robot/sendBySession?session=x",
+    "https://oapi.dingtalk.com:8443/robot/sendBySession?session=x",
+    "https://oapi.dingtalk.com/other?session=x",
+    "not a URL",
+  ];
+  for (const sessionWebhook of unsafe) {
+    const f = fake();
+    await assert.rejects(
+      sendAnswer({ ...base, conversationType: "1", sessionWebhook }, "x", f),
+      /Invalid DingTalk sessionWebhook/,
+    );
+    assert.equal(f.calls.length, 0);
+  }
+});
+
+test("accepts DingTalk sessionWebhook on explicit HTTPS port", async () => {
+  const f = fake();
+  await sendAnswer({
+    ...base,
+    conversationType: "1",
+    sessionWebhook: "https://oapi.dingtalk.com:443/robot/sendBySession?session=x",
+  }, "x", f);
+  assert.equal(f.calls.length, 1);
+});
