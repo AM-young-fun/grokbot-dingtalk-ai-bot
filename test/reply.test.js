@@ -1,56 +1,43 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildTextReply, redactWebhook, sendReply } from "../src/reply.js";
+import { buildTextReply, buildGroupReply, redactWebhook, sendAnswer } from "../src/reply.js";
 
-test("builds DingTalk text payload", () => {
-  assert.deepEqual(buildTextReply("answer"), {
-    msgtype: "text",
-    text: { content: "answer" },
-  });
-});
+const base = { msgtype: "text", text: { content: "B200 显存多大？" }, msgId: "msgA", senderId: "$:LWCP:abc", senderStaffId: "staff1", senderNick: "Gao", conversationId: "cidX", robotCode: "dingR", sessionWebhook: "https://oapi.dingtalk.com/robot/sendBySession?session=secret" };
 
-test("rejects missing session webhook", async () => {
-  await assert.rejects(() => sendReply("", "answer"), /sessionWebhook/);
-});
-
-test("posts text reply with access token and returns DingTalk result", async () => {
+function fake(result = { errcode: 0 }) {
   const calls = [];
-  const fakeFetch = async (url, options) => {
-    calls.push({ url, options });
-    return { ok: true, status: 200, json: async () => ({ errcode: 0 }) };
-  };
+  return { calls, fetchImpl: async (url, opts) => { calls.push({ url, body: JSON.parse(opts.body) }); return { ok: true, status: 200, json: async () => result }; } };
+}
 
-  const result = await sendReply(
-    "https://oapi.dingtalk.com/robot/sendBySession?session=secret",
-    "answer",
-    { accessToken: "token", fetchImpl: fakeFetch },
-  );
-
-  assert.deepEqual(result, { errcode: 0 });
-  assert.equal(calls[0].options.headers["x-acs-dingtalk-access-token"], "token");
-  assert.deepEqual(JSON.parse(calls[0].options.body), buildTextReply("answer"));
+test("single chat posts plain text to sessionWebhook, no @ or quote", async () => {
+  const f = fake();
+  await sendAnswer({ ...base, conversationType: "1" }, "answer", f);
+  assert.equal(f.calls[0].url, base.sessionWebhook);
+  assert.deepEqual(f.calls[0].body, buildTextReply("answer"));
 });
 
-test("rejects DingTalk API errors", async () => {
-  const fakeFetch = async () => ({
-    ok: true,
-    status: 200,
-    json: async () => ({ errcode: 300001, errmsg: "session 不存在" }),
-  });
-
-  await assert.rejects(
-    () => sendReply(
-      "https://oapi.dingtalk.com/robot/sendBySession?session=secret",
-      "answer",
-      { fetchImpl: fakeFetch },
-    ),
-    /300001: session 不存在/,
-  );
+test("group reply is markdown that quotes the question and @s senderStaffId", async () => {
+  const f = fake();
+  await sendAnswer({ ...base, conversationType: "2" }, "1.44 TB", f);
+  const body = f.calls[0].body;
+  assert.equal(body.msgtype, "markdown");
+  assert.deepEqual(body.at.atUserIds, ["staff1"]);
+  assert.match(body.markdown.text, /@staff1 1\.44 TB/);
+  assert.match(body.markdown.text, /^> B200 显存多大？/);
 });
 
-test("redacts session value", () => {
-  assert.equal(
-    redactWebhook("https://oapi.dingtalk.com/robot/sendBySession?session=secret"),
-    "https://oapi.dingtalk.com/robot/sendBySession?session=%5BREDACTED%5D",
-  );
+test("group reply missing required fields errors, no plain fallback", async () => {
+  const f = fake();
+  await assert.rejects(sendAnswer({ ...base, conversationType: "2", senderStaffId: undefined }, "x", f), /senderStaffId.*refusing/);
+  assert.equal(f.calls.length, 0);
+  assert.throws(() => buildGroupReply({ ...base, robotCode: "" }, "x"), /robotCode/);
+});
+
+test("expired sessionWebhook and DingTalk errors reject", async () => {
+  await assert.rejects(sendAnswer({ ...base, conversationType: "1", sessionWebhookExpiredTime: 1 }, "x", fake()), /expired/);
+  await assert.rejects(sendAnswer({ ...base, conversationType: "1" }, "x", fake({ errcode: 300001, errmsg: "bad" })), /300001/);
+});
+
+test("redacts webhook query", () => {
+  assert.equal(redactWebhook(base.sessionWebhook), "https://oapi.dingtalk.com/robot/sendBySession");
 });
