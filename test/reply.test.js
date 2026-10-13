@@ -35,7 +35,12 @@ test("group reply missing required fields errors, no plain fallback", async () =
 
 test("expired sessionWebhook and DingTalk errors reject", async () => {
   await assert.rejects(sendAnswer({ ...base, conversationType: "1", sessionWebhookExpiredTime: 1 }, "x", fake()), /expired/);
-  await assert.rejects(sendAnswer({ ...base, conversationType: "1" }, "x", fake({ errcode: 300001, errmsg: "bad" })), /300001/);
+  await assert.rejects(
+    sendAnswer({ ...base, conversationType: "1" }, "x", fake({ errcode: 300001, errmsg: "secret remote detail" })),
+    (error) => error.code === "DINGTALK_REPLY_REJECTED"
+      && error.status === 200
+      && !error.message.includes("secret remote detail"),
+  );
 });
 
 test("redacts webhook query", () => {

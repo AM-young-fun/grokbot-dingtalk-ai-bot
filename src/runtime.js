@@ -23,7 +23,11 @@ export function createRobotCallbackHandler({ client, config, forward = forwardTo
     try {
       await forward(data, { url: config.webhookUrl, secret: config.webhookSecret, fetchImpl });
     } catch (error) {
-      logger.error("Grokbot webhook not accepted", { msgId: data?.msgId, status: error.status ?? 0, error: error.message });
+      logger.error("Grokbot webhook not accepted", {
+        msgId: data?.msgId,
+        status: error.status ?? 0,
+        code: error.code ?? "WEBHOOK_UNKNOWN",
+      });
       client.socketCallBackResponse(messageId, { success: false });
       return;
     }

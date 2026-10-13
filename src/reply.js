@@ -72,7 +72,10 @@ async function postSession(sessionWebhook, body, fetchImpl) {
   let result = {};
   try { result = await response.json(); } catch { /* empty */ }
   if (!response.ok || (result.errcode !== undefined && result.errcode !== 0)) {
-    throw new Error(`DingTalk reply failed (${response.status}) ${result.errcode ?? "HTTP"}: ${result.errmsg ?? "unknown error"}`);
+    const error = new Error("DINGTALK_REPLY_REJECTED");
+    error.code = "DINGTALK_REPLY_REJECTED";
+    error.status = response.status;
+    throw error;
   }
   return result;
 }
