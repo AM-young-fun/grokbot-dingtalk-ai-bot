@@ -257,11 +257,11 @@ docker compose restart bot-one
 
 镜像层和应用代码共用，但两个服务配置互不混用。容器进入运行状态只说明进程已启动，不代表钉钉 Stream 已连接，也不代表真实群聊、单聊或文档读取验收通过；仍须完成上面的“端到端验收”和目标账号的真实文档读取验证。
 
-连接 watchdog 在长期未连接或失活时退出进程，`restart: unless-stopped` 随后重启容器。若仍保留每 10 分钟主动重启策略，必须分别定向到 `bot-one` 和 `bot-two`，例如分别调度：
+连接 watchdog 在检测到长期未连接或失活时退出进程，`restart: unless-stopped` 随后重启对应容器。Docker 部署不强制定时重启。若运维仍保留每 10 分钟主动重启作为额外 workaround，必须为两个服务使用不同任务名和锁文件，并分别定向到 `bot-one`、`bot-two`，避免一个任务同时重启两个实例，例如：
 
-```bash
-docker compose restart bot-one
-docker compose restart bot-two
+```cron
+*/10 * * * * /absolute/path/to/flock -n /tmp/grokbot-bot-one-restart.lock /usr/bin/docker compose -f /absolute/path/to/compose.yaml restart bot-one
+*/10 * * * * /absolute/path/to/flock -n /tmp/grokbot-bot-two-restart.lock /usr/bin/docker compose -f /absolute/path/to/compose.yaml restart bot-two
 ```
 
 ### PM2
@@ -288,6 +288,6 @@ pm2 status grokbot-dingtalk
 
 确认 cron 已保存、PM2 进程名准确。定时重启可能打断正在处理的单条消息，并会清空进程内的 10 分钟消息去重缓存；钉钉若在重启窗口重投，仍可能再次触发 Grokbot。不要把定时重启误认为零丢失或永久去重。
 
-也可用 systemd、Docker、云平台托管进程，但除异常退出自动重启外，仍应配置每 10 分钟主动重启，并通过环境变量注入密钥。
+也可用 systemd、Docker、云平台托管进程，并通过环境变量注入密钥。watchdog 配合进程守护处理检测到的连接失活；定时重启只作为运维选择的额外 workaround，不是 Docker 部署必需项。
 
 日志只保留排障所需的 `msgId` 和简短错误。不要输出用户完整消息、`Client Secret` 或完整 `sessionWebhook`。
