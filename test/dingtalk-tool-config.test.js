@@ -29,6 +29,31 @@ test('loadToolConfig trims configuration values', () => {
   });
 });
 
+test('loadToolConfig accepts an operator userId without a unionId', () => {
+  assert.deepEqual(loadToolConfig({
+    DINGTALK_CLIENT_ID: 'client-id',
+    DINGTALK_CLIENT_SECRET: 'client-secret',
+    DINGTALK_OPERATOR_USER_ID: ' 01412445306844863 ',
+  }), {
+    clientId: 'client-id',
+    clientSecret: 'client-secret',
+    operatorUserId: '01412445306844863',
+  });
+});
+
+test('loadToolConfig prefers a direct unionId when both identities exist', () => {
+  assert.deepEqual(loadToolConfig({
+    DINGTALK_CLIENT_ID: 'client-id',
+    DINGTALK_CLIENT_SECRET: 'client-secret',
+    DINGTALK_OPERATOR_ID: 'union-id',
+    DINGTALK_OPERATOR_USER_ID: 'user-id',
+  }), {
+    clientId: 'client-id',
+    clientSecret: 'client-secret',
+    operatorId: 'union-id',
+  });
+});
+
 test('loadToolConfig names every missing variable without exposing values', () => {
   const secret = 'must-not-leak';
 
@@ -39,6 +64,7 @@ test('loadToolConfig names every missing variable without exposing values', () =
       assert.equal(error.code, 'CONFIG_MISSING');
       assert.match(error.message, /DINGTALK_CLIENT_ID/);
       assert.match(error.message, /DINGTALK_OPERATOR_ID/);
+      assert.match(error.message, /DINGTALK_OPERATOR_USER_ID/);
       assert.doesNotMatch(error.message, new RegExp(secret));
       assert.doesNotMatch(error.message, /DINGTALK_CLIENT_SECRET/);
       return true;
@@ -59,6 +85,7 @@ test('loadToolConfig treats blank values as missing', () => {
         'DINGTALK_CLIENT_ID',
         'DINGTALK_CLIENT_SECRET',
         'DINGTALK_OPERATOR_ID',
+        'DINGTALK_OPERATOR_USER_ID',
       ]) {
         assert.match(error.message, new RegExp(name));
       }

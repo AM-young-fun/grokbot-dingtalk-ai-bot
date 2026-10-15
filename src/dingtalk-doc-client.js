@@ -119,11 +119,19 @@ async function readBoundedBody(response, maxResponseBytes, timeout) {
 export function createDingTalkDocClient({
   tokenProvider,
   operatorId,
+  operatorIdProvider,
   fetchImpl = fetch,
   timeoutMs = 10_000,
   maxResponseBytes = 5 * 1024 * 1024,
 }) {
-  requireText(operatorId, 'operatorId');
+  if (operatorIdProvider !== undefined
+      && typeof operatorIdProvider?.getOperatorId !== 'function') {
+    throw invalid('operatorIdProvider.getOperatorId is required');
+  }
+  if (operatorIdProvider === undefined) requireText(operatorId, 'operatorId');
+  const getOperatorId = operatorIdProvider === undefined
+    ? async () => operatorId
+    : async () => requireText(await operatorIdProvider.getOperatorId(), 'operatorId');
   if (!tokenProvider || typeof tokenProvider.getToken !== 'function') throw invalid('tokenProvider.getToken is required');
   if (typeof fetchImpl !== 'function') throw invalid('fetchImpl must be a function');
   if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw invalid('timeoutMs must be positive');
@@ -199,22 +207,25 @@ export function createDingTalkDocClient({
 
   return {
     async health() {
-      await request('/v2.0/wiki/workspaces', { query: { operatorId, maxResults: 1 } });
+      const resolvedOperatorId = await getOperatorId();
+      await request('/v2.0/wiki/workspaces', { query: { operatorId: resolvedOperatorId, maxResults: 1 } });
       return { authenticated: true, operatorIdConfigured: true, dingTalkReachable: true };
     },
 
     async listWorkspaces({ maxResults = 20, nextToken } = {}) {
       validateMaxResults(maxResults);
       validateOptionalToken(nextToken);
+      const resolvedOperatorId = await getOperatorId();
       const payload = await request('/v2.0/wiki/workspaces', {
-        query: { operatorId, maxResults, nextToken },
+        query: { operatorId: resolvedOperatorId, maxResults, nextToken },
       });
       return normalizePage(payload, 'workspaces');
     },
 
     async getWorkspace(workspaceId) {
       requireText(workspaceId, 'workspaceId');
-      return request(`/v2.0/wiki/workspaces/${encodeURIComponent(workspaceId)}`, { query: { operatorId } });
+      const resolvedOperatorId = await getOperatorId();
+      return request(`/v2.0/wiki/workspaces/${encodeURIComponent(workspaceId)}`, { query: { operatorId: resolvedOperatorId } });
     },
 
     async listNodes({ workspaceId, parentNodeId, maxResults = 50, nextToken } = {}) {
@@ -222,29 +233,33 @@ export function createDingTalkDocClient({
       if (parentNodeId !== undefined) requireText(parentNodeId, 'parentNodeId');
       validateMaxResults(maxResults);
       validateOptionalToken(nextToken);
+      const resolvedOperatorId = await getOperatorId();
       const payload = await request('/v2.0/wiki/nodes', {
-        query: { workspaceId, parentNodeId, operatorId, maxResults, nextToken },
+        query: { workspaceId, parentNodeId, operatorId: resolvedOperatorId, maxResults, nextToken },
       });
       return normalizePage(payload, 'nodes');
     },
 
     async getNode(nodeId) {
       requireText(nodeId, 'nodeId');
-      return request(`/v2.0/wiki/nodes/${encodeURIComponent(nodeId)}`, { query: { operatorId } });
+      const resolvedOperatorId = await getOperatorId();
+      return request(`/v2.0/wiki/nodes/${encodeURIComponent(nodeId)}`, { query: { operatorId: resolvedOperatorId } });
     },
 
     async resolveUrl(url) {
       validateDocumentUrl(url);
+      const resolvedOperatorId = await getOperatorId();
       return request('/v2.0/wiki/nodes/queryByUrl', {
         method: 'POST',
-        query: { operatorId },
-        body: { url, operatorId },
+        query: { operatorId: resolvedOperatorId },
+        body: { url, operatorId: resolvedOperatorId },
       });
     },
 
     async getBlocks(docKey) {
       requireText(docKey, 'docKey');
-      return request(`/v1.0/doc/suites/documents/${encodeURIComponent(docKey)}/blocks`, { query: { operatorId } });
+      const resolvedOperatorId = await getOperatorId();
+      return request(`/v1.0/doc/suites/documents/${encodeURIComponent(docKey)}/blocks`, { query: { operatorId: resolvedOperatorId } });
     },
   };
 }

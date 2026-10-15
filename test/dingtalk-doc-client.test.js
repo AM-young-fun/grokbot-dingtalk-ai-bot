@@ -49,6 +49,28 @@ test('listWorkspaces sends exact authenticated request and normalizes pagination
   });
 });
 
+test('document requests resolve operatorId through provider', async () => {
+  let operatorCalls = 0;
+  const calls = [];
+  const client = createDingTalkDocClient({
+    operatorIdProvider: {
+      async getOperatorId() {
+        operatorCalls += 1;
+        return 'resolved-union';
+      },
+    },
+    tokenProvider: { async getToken() { return 'token'; } },
+    fetchImpl: async (url) => {
+      calls.push(url);
+      return jsonResponse({ workspaces: [] });
+    },
+  });
+
+  await client.listWorkspaces();
+  assert.equal(operatorCalls, 1);
+  assert.equal(calls[0], 'https://api.dingtalk.com/v2.0/wiki/workspaces?operatorId=resolved-union&maxResults=20');
+});
+
 test('document methods encode path and query values and preserve response data', async () => {
   const node = await fixture('dingtalk-node.json');
   const blocks = await fixture('dingtalk-blocks.json');

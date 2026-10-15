@@ -2,6 +2,7 @@ import { parseArgs } from 'node:util';
 
 import { createTokenProvider } from './dingtalk-auth.js';
 import { createDingTalkDocClient } from './dingtalk-doc-client.js';
+import { createOperatorIdProvider } from './dingtalk-operator.js';
 import { normalizeDocument, sanitizeOutput } from './dingtalk-doc-content.js';
 import { loadToolConfig } from './dingtalk-tool-config.js';
 import { ToolError, exitCodeFor, toErrorEnvelope } from './dingtalk-tool-error.js';
@@ -144,8 +145,8 @@ async function readDocument(client, values, stdout) {
   }
 }
 
-function defaultClientFactory({ config, tokenProvider, fetchImpl }) {
-  return createDingTalkDocClient({ tokenProvider, operatorId: config.operatorId, fetchImpl });
+function defaultClientFactory({ tokenProvider, operatorIdProvider, fetchImpl }) {
+  return createDingTalkDocClient({ tokenProvider, operatorIdProvider, fetchImpl });
 }
 
 export async function runCli(argv, {
@@ -164,7 +165,13 @@ export async function runCli(argv, {
       clientSecret: config.clientSecret,
       fetchImpl,
     });
-    const client = createClient({ config, tokenProvider, fetchImpl });
+    const operatorIdProvider = createOperatorIdProvider({
+      operatorId: config.operatorId,
+      operatorUserId: config.operatorUserId,
+      tokenProvider,
+      fetchImpl,
+    });
+    const client = createClient({ config, tokenProvider, operatorIdProvider, fetchImpl });
 
     let result;
     if (command === 'health') result = await client.health();

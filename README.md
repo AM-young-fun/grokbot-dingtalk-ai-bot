@@ -158,14 +158,17 @@ node --check src/index.js
 - `Document.Workspace.Read`
 - `Document.WorkspaceDocument.Read`
 - `Wiki.Node.Read`
+- `Contact.User.Read`（用 userId 自动查询 unionId）
 
-`DINGTALK_OPERATOR_ID` 必须是执行读取操作用户的 `unionId`。CLI 从启动它的进程环境读取以下变量；不要提交或打印这些值：
+`DINGTALK_OPERATOR_USER_ID` 填执行读取操作员工的 `userId`。CLI 会使用同一套 AppKey/Secret 自动查询并在进程内缓存对应 `unionId`，不用手工查 unionId。CLI 从启动它的进程环境读取以下变量；不要提交或打印 AppSecret：
 
 ```bash
 export DINGTALK_CLIENT_ID='替换为 Client ID'
 export DINGTALK_CLIENT_SECRET='替换为 Client Secret'
-export DINGTALK_OPERATOR_ID='替换为用户 unionId'
+export DINGTALK_OPERATOR_USER_ID='01412445306844863'
 ```
+
+旧部署仍可使用 `DINGTALK_OPERATOR_ID='用户 unionId'`；若两个变量同时存在，直接 unionId 优先并跳过查询。
 
 安装依赖后，可用仓库脚本运行 package bin：
 
@@ -215,7 +218,7 @@ rg -n "method:\s*['\"](?:POST|PUT|PATCH|DELETE)['\"]|overwriteContent|appendText
   src/dingtalk-auth.js src/dingtalk-doc-client.js bin/dingtalk-grokbot-tool.js
 ```
 
-`npm test` 覆盖参数、输出格式、分页、内容规范化及错误映射，但不证明真实钉钉账号、权限、网络或文档可用。上线前仍需使用目标用户 `unionId` 执行 `health`，并对授权工作区完成一次真实的列表、解析和读取验证。
+`npm test` 覆盖参数、输出格式、分页、userId 转 unionId、内容规范化及错误映射，但不证明真实钉钉账号、权限、网络或文档可用。上线前仍需使用目标用户 `userId` 执行 `health`，并对授权工作区完成一次真实的列表、解析和读取验证。
 
 ### 知识库 CLI 真实环境验收清单
 

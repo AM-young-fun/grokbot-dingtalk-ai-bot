@@ -90,6 +90,35 @@ test('loads config and supplies token provider inputs to the client factory', as
   assert.deepEqual(h.factoryCalls[0].config, { clientId: 'client', clientSecret: 'secret', operatorId: 'operator' });
   assert.equal(h.factoryCalls[0].fetchImpl, fetchImpl);
   assert.equal(typeof h.factoryCalls[0].tokenProvider.getToken, 'function');
+  assert.equal(typeof h.factoryCalls[0].operatorIdProvider.getOperatorId, 'function');
+});
+
+test('wires operator userId into automatic unionId resolution', async () => {
+  const calls = [];
+  let stdout = '';
+  const exitCode = await runCli(['health'], {
+    env: {
+      DINGTALK_CLIENT_ID: 'client',
+      DINGTALK_CLIENT_SECRET: 'secret',
+      DINGTALK_OPERATOR_USER_ID: '01412445306844863',
+    },
+    fetchImpl: async (url) => {
+      calls.push(url);
+      if (url.endsWith('/v1.0/oauth2/accessToken')) {
+        return new Response(JSON.stringify({ accessToken: 'token', expireIn: 7200 }));
+      }
+      return new Response(JSON.stringify({ unionId: 'resolved-union' }));
+    },
+    createClient({ operatorIdProvider }) {
+      return { async health() { return { operatorId: await operatorIdProvider.getOperatorId() }; } };
+    },
+    stdout(value) { stdout += value; },
+    stderr() {},
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(JSON.parse(stdout).data.operatorId, 'resolved-union');
+  assert.equal(calls[1], 'https://api.dingtalk.com/v1.0/contact/users/01412445306844863');
 });
 
 test('rejects unknown commands, options, extra positionals, missing flags, invalid limits, and invalid formats', async () => {

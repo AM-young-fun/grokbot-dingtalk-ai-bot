@@ -18,6 +18,7 @@ const EXIT_CODES = new Map([
   ['RATE_LIMITED', 6],
   ['UPSTREAM_TIMEOUT', 7],
   ['UPSTREAM_ERROR', 7],
+  ['OPERATOR_RESOLUTION_FAILED', 7],
 ]);
 
 export function exitCodeFor(error) {

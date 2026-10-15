@@ -5,7 +5,9 @@ description: Use when reading DingTalk knowledge-base workspaces, nodes, or ALID
 
 # DingTalk Grokbot Read Tool
 
-Use only `npm run tool -- ...` from this repository. The CLI reads `DINGTALK_CLIENT_ID`, `DINGTALK_CLIENT_SECRET`, and `DINGTALK_OPERATOR_ID` from its invoking process environment. `DINGTALK_OPERATOR_ID` is the acting user's unionId.
+Use only `npm run tool -- ...` from this repository. The CLI reads `DINGTALK_CLIENT_ID`, `DINGTALK_CLIENT_SECRET`, and `DINGTALK_OPERATOR_USER_ID` from its invoking process environment. It automatically resolves the acting user's `userId` to a `unionId`. Existing deployments may instead provide `DINGTALK_OPERATOR_ID` as a direct unionId override.
+
+Automatic resolution requires the app's read-only `Contact.User.Read` permission in addition to the document permissions.
 
 ## Route the request
 
