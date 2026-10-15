@@ -59,6 +59,17 @@ function normalizePage(payload, collectionKey) {
   return { data, page: { nextCursor: nextToken, hasMore: Boolean(nextToken) } };
 }
 
+function cancelResponseBody(response) {
+  try {
+    const cancellation = response.body?.cancel?.();
+    if (cancellation && typeof cancellation.catch === 'function') {
+      void cancellation.catch(() => {});
+    }
+  } catch {
+    // Body disposal is best-effort and must never mask the request result.
+  }
+}
+
 async function readBoundedBody(response, maxResponseBytes, timeout) {
   if (!response.body || typeof response.body.getReader !== 'function') {
     const bytes = new Uint8Array(await Promise.race([response.arrayBuffer(), timeout]));
@@ -121,7 +132,13 @@ export function createDingTalkDocClient({
     }
 
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const token = await tokenProvider.getToken(attempt === 1 ? { forceRefresh: true } : undefined);
+      let token;
+      try {
+        token = await tokenProvider.getToken(attempt === 1 ? { forceRefresh: true } : undefined);
+      } catch (error) {
+        if (error instanceof ToolError) throw error;
+        throw new ToolError('UPSTREAM_ERROR', 'DingTalk token provider failed');
+      }
       const controller = new AbortController();
       let timedOut = false;
       let timer;
@@ -144,14 +161,19 @@ export function createDingTalkDocClient({
         }
         const response = await Promise.race([fetchImpl(url.toString(), init), timeout]);
         if (response.status === 401 && attempt === 0) {
+          cancelResponseBody(response);
           clearTimeout(timer);
           continue;
         }
-        if (response.status < 200 || response.status >= 300) throw statusError(response);
+        if (response.status < 200 || response.status >= 300) {
+          cancelResponseBody(response);
+          throw statusError(response);
+        }
 
         const declaredLength = response.headers?.get?.('content-length');
         if (declaredLength !== null && declaredLength !== undefined
             && Number(declaredLength) > maxResponseBytes) {
+          cancelResponseBody(response);
           throw new ToolError('UPSTREAM_ERROR', 'DingTalk response exceeded size limit');
         }
         const bytes = await readBoundedBody(response, maxResponseBytes, timeout);

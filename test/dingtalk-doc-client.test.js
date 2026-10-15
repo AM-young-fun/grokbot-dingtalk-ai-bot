@@ -139,6 +139,80 @@ test('retries exactly once on 401 with forced token refresh', async () => {
   assert.equal(calls[1].init.headers['x-acs-dingtalk-access-token'], 'fresh-token');
 });
 
+test('cancels first 401 response body before retrying', async () => {
+  let cancelled = false;
+  const unauthorized = new Response(new ReadableStream({
+    cancel() { cancelled = true; },
+  }), { status: 401 });
+  const { client } = harness([unauthorized, jsonResponse({ nodeId: 'ok' })]);
+
+  assert.deepEqual(await client.getNode('node-1'), { nodeId: 'ok' });
+  assert.equal(cancelled, true);
+});
+
+test('cancels non-success and declared-oversize response bodies', async () => {
+  for (const responseFactory of [
+    (body) => new Response(body, { status: 403 }),
+    (body) => new Response(body, { headers: { 'content-length': '99' } }),
+  ]) {
+    let cancelled = false;
+    const body = new ReadableStream({ cancel() { cancelled = true; } });
+    const { client } = harness([responseFactory(body)], { maxResponseBytes: 8 });
+
+    await assert.rejects(client.getNode('node-1'), ToolError);
+    assert.equal(cancelled, true);
+  }
+});
+
+test('normalizes unexpected initial token provider errors without leaking details', async () => {
+  const client = createDingTalkDocClient({
+    operatorId: 'operator',
+    tokenProvider: { async getToken() { throw new Error('secret-token-provider-detail'); } },
+    fetchImpl: async () => { throw new Error('must not fetch'); },
+  });
+
+  await assert.rejects(client.getNode('node'), (error) => {
+    assert.equal(error.code, 'UPSTREAM_ERROR');
+    assert.doesNotMatch(error.message, /secret-token-provider-detail/);
+    return true;
+  });
+});
+
+test('normalizes unexpected forced-refresh errors after 401', async () => {
+  let tokenCalls = 0;
+  let fetchCalls = 0;
+  const client = createDingTalkDocClient({
+    operatorId: 'operator',
+    tokenProvider: {
+      async getToken() {
+        tokenCalls += 1;
+        if (tokenCalls === 2) throw new Error('forced-refresh-secret');
+        return 'token';
+      },
+    },
+    fetchImpl: async () => {
+      fetchCalls += 1;
+      return jsonResponse({}, 401);
+    },
+  });
+
+  await assert.rejects(client.getNode('node'), (error) => {
+    assert.equal(error.code, 'UPSTREAM_ERROR');
+    assert.doesNotMatch(error.message, /forced-refresh-secret/);
+    return true;
+  });
+  assert.equal(fetchCalls, 1);
+});
+
+test('preserves ToolError from token provider', async () => {
+  const expected = new ToolError('AUTH_FAILED', 'Safe provider failure');
+  const client = createDingTalkDocClient({
+    operatorId: 'operator',
+    tokenProvider: { async getToken() { throw expected; } },
+  });
+  await assert.rejects(client.getNode('node'), (error) => error === expected);
+});
+
 test('maps HTTP statuses without exposing upstream body', async () => {
   for (const [status, code] of [[400, 'INVALID_ARGUMENT'], [401, 'AUTH_FAILED'], [403, 'DOCUMENT_FORBIDDEN'], [404, 'NOT_FOUND'], [429, 'RATE_LIMITED'], [500, 'UPSTREAM_ERROR']]) {
     const { client } = harness(status === 401
