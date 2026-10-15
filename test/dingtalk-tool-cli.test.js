@@ -179,6 +179,11 @@ test('sanitizes nested secrets and credential-bearing URLs in every JSON command
       authorizationHeader: 'hide-authorization-header',
       authorizationCode: 'hide-authorization-code',
       signingKey: 'hide-signing-key',
+      password: 'hide-password',
+      passphrase: 'hide-passphrase',
+      apiKey: 'hide-api-key',
+      privateKey: 'hide-private-key',
+      clientKey: 'hide-client-key',
       url: 'https://user:pass@example.com/a?authorization=hide&keep=1#frag',
       publicUrl: 'https://example.com/a?keep=1&ticket=hide#frag',
     },
@@ -206,7 +211,7 @@ test('sanitizes nested secrets and credential-bearing URLs in every JSON command
     assert.match(serialized, /authenticated/);
     assert.match(serialized, /"authentication":true/);
     assert.match(serialized, /authenticationState/);
-    assert.doesNotMatch(serialized, /authorizationHeader|authorizationCode|signingKey/);
+    assert.doesNotMatch(serialized, /authorizationHeader|authorizationCode|signingKey|password|passphrase|apiKey|privateKey|clientKey/);
   }
 });
 

@@ -12,6 +12,7 @@ const SENSITIVE_OUTPUT_STEMS = [
   'authorization', 'credential', 'accesstoken', 'authtoken', 'authcode',
   'appsecret', 'clientsecret', 'signingkey', 'signature', 'sessiontoken',
   'webhook', 'cookie', 'bearer', 'ticket', 'token', 'secret',
+  'password', 'passphrase', 'apikey', 'privatekey', 'clientkey',
 ];
 const MAX_DEPTH = 64;
 const CIRCULAR_MARKER = '[Circular]';
