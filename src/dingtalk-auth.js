@@ -111,8 +111,15 @@ export function createTokenProvider({
 
     const lifetimeMs = expiresSeconds * 1_000;
     const skewMs = Math.min(MAX_EXPIRY_SKEW_MS, lifetimeMs / 2);
+    const issuedAt = now();
+    const expiresAt = issuedAt + lifetimeMs;
+    const nextRefreshAt = expiresAt - skewMs;
+    if (![lifetimeMs, issuedAt, expiresAt, nextRefreshAt].every(Number.isFinite)) {
+      throw safeError('UPSTREAM_ERROR', 'DingTalk token response was invalid', response.status);
+    }
+
     cachedToken = token;
-    refreshAt = now() + lifetimeMs - skewMs;
+    refreshAt = nextRefreshAt;
     return token;
   }
 

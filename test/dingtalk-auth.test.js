@@ -264,6 +264,7 @@ test('network failure and malformed success body become safe UPSTREAM_ERROR erro
     async () => new Response('not-json: client-secret', { status: 200 }),
     async () => jsonResponse({ accessToken: '', expireIn: 7200 }),
     async () => jsonResponse({ accessToken: 'leaked-token', expireIn: 0 }),
+    async () => jsonResponse({ accessToken: 'huge-token', expireIn: Number.MAX_VALUE }),
   ];
 
   for (const fetchImpl of cases) {
@@ -276,7 +277,7 @@ test('network failure and malformed success body become safe UPSTREAM_ERROR erro
     await assert.rejects(provider.getToken(), (error) => {
       assert.equal(error.code, 'UPSTREAM_ERROR');
       const serialized = JSON.stringify(error);
-      for (const secret of ['client-id', 'client-secret', 'leaked-token', 'not-json']) {
+      for (const secret of ['client-id', 'client-secret', 'leaked-token', 'huge-token', 'not-json']) {
         assert.doesNotMatch(error.message, new RegExp(secret));
         assert.doesNotMatch(serialized, new RegExp(secret));
       }
