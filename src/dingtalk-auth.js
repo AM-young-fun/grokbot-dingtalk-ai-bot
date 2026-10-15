@@ -17,6 +17,7 @@ function isAuthResponse(status, body) {
     'invalidappsecret',
     'invalidaccesskey',
     'invalidaccesskeyid',
+    'invalidclient',
     'invalidclientid',
     'invalidclientsecret',
   ]);

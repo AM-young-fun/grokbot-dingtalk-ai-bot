@@ -184,6 +184,20 @@ test('DingTalk auth error response becomes AUTH_FAILED', async () => {
   });
 });
 
+test('DingTalk InvalidClient response becomes AUTH_FAILED', async () => {
+  const provider = createTokenProvider({
+    clientId: 'id',
+    clientSecret: 'secret',
+    fetchImpl: async () => jsonResponse({ code: 'InvalidClient' }, 400),
+  });
+
+  await assert.rejects(provider.getToken(), (error) => {
+    assert.equal(error.code, 'AUTH_FAILED');
+    assert.equal(error.status, 400);
+    return true;
+  });
+});
+
 test('DingTalk invalid app credentials response becomes AUTH_FAILED', async () => {
   const provider = createTokenProvider({
     clientId: 'id',
