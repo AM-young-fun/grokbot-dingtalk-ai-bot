@@ -23,7 +23,7 @@ test('ToolError defaults status and retryAfter', () => {
   assert.equal(error.retryAfter, null);
 });
 
-test('exitCodeFor maps known codes and defaults unknown codes to 1', () => {
+test('exitCodeFor maps error codes and defaults unknown errors to 1', () => {
   const mappings = {
     INVALID_ARGUMENT: 2,
     CONFIG_MISSING: 3,
@@ -38,8 +38,10 @@ test('exitCodeFor maps known codes and defaults unknown codes to 1', () => {
   };
 
   for (const [code, exitCode] of Object.entries(mappings)) {
-    assert.equal(exitCodeFor(code), exitCode, code);
+    assert.equal(exitCodeFor(new ToolError(code, 'Failed')), exitCode, code);
   }
+
+  assert.equal(exitCodeFor(null), 1);
 });
 
 test('toErrorEnvelope exposes only safe error fields', () => {
@@ -69,4 +71,21 @@ test('toErrorEnvelope includes retryAfter only when present', () => {
       retryAfter: 15,
     },
   });
+});
+
+test('toErrorEnvelope replaces unexpected errors with a safe envelope', () => {
+  const secret = 'token=supersecret';
+
+  for (const error of [new Error(secret), secret, null]) {
+    const envelope = toErrorEnvelope(error);
+
+    assert.deepEqual(envelope, {
+      ok: false,
+      error: {
+        code: 'UNEXPECTED',
+        message: 'Unexpected error',
+      },
+    });
+    assert.doesNotMatch(JSON.stringify(envelope), /supersecret/);
+  }
 });

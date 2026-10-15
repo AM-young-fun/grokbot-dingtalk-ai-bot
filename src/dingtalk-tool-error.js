@@ -20,11 +20,21 @@ const EXIT_CODES = new Map([
   ['UPSTREAM_ERROR', 7],
 ]);
 
-export function exitCodeFor(code) {
-  return EXIT_CODES.get(code) ?? 1;
+export function exitCodeFor(error) {
+  return EXIT_CODES.get(error?.code) ?? 1;
 }
 
 export function toErrorEnvelope(error) {
+  if (!(error instanceof ToolError)) {
+    return {
+      ok: false,
+      error: {
+        code: 'UNEXPECTED',
+        message: 'Unexpected error',
+      },
+    };
+  }
+
   const envelope = {
     ok: false,
     error: {
