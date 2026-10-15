@@ -216,6 +216,34 @@ test('non-auth HTTP failure becomes UPSTREAM_ERROR', async () => {
   });
 });
 
+test('non-auth DingTalk errcode becomes UPSTREAM_ERROR', async () => {
+  const provider = createTokenProvider({
+    clientId: 'id',
+    clientSecret: 'secret',
+    fetchImpl: async () => jsonResponse({ errcode: 500, errmsg: 'internal failure' }, 503),
+  });
+
+  await assert.rejects(provider.getToken(), (error) => {
+    assert.equal(error.code, 'UPSTREAM_ERROR');
+    assert.equal(error.status, 503);
+    return true;
+  });
+});
+
+test('non-auth error code containing client becomes UPSTREAM_ERROR', async () => {
+  const provider = createTokenProvider({
+    clientId: 'id',
+    clientSecret: 'secret',
+    fetchImpl: async () => jsonResponse({ code: 'ClientRateLimited', message: 'slow down' }, 429),
+  });
+
+  await assert.rejects(provider.getToken(), (error) => {
+    assert.equal(error.code, 'UPSTREAM_ERROR');
+    assert.equal(error.status, 429);
+    return true;
+  });
+});
+
 test('network failure and malformed success body become safe UPSTREAM_ERROR errors', async () => {
   const cases = [
     async () => { throw new Error('network contains client-secret'); },

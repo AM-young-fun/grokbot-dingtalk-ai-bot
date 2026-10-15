@@ -5,14 +5,26 @@ const MAX_EXPIRY_SKEW_MS = 60_000;
 
 function isAuthResponse(status, body) {
   if (status === 401 || status === 403) return true;
-  if (body?.errcode !== undefined && body.errcode !== 0) return true;
 
   const code = typeof body?.code === 'string' ? body.code : '';
-  if (/auth|credential|client|app.?key|app.?secret|access.?token/i.test(code)) return true;
+  const normalizedCode = code.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  const credentialCodes = new Set([
+    'invalidauthentication',
+    'authenticationfailed',
+    'invalidcredential',
+    'invalidcredentials',
+    'invalidappkey',
+    'invalidappsecret',
+    'invalidaccesskey',
+    'invalidaccesskeyid',
+    'invalidclientid',
+    'invalidclientsecret',
+  ]);
+  if (credentialCodes.has(normalizedCode)) return true;
 
   const message = typeof body?.message === 'string' ? body.message : '';
   return status === 400
-    && /(?:app.?key|app.?secret|credential).*(?:invalid|not valid|reject)|(?:invalid|not valid|reject).*(?:app.?key|app.?secret|credential)/i.test(message);
+    && /(?:app.?key|app.?secret|access.?key|credential).*(?:invalid|not valid|reject)|(?:invalid|not valid|reject).*(?:app.?key|app.?secret|access.?key|credential)/i.test(message);
 }
 
 function safeError(code, message, status = 0) {
