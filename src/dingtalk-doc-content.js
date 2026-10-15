@@ -6,7 +6,6 @@ const SAFE_FIELDS = new Set([
   'paragraph', 'heading', 'unorderedList', 'orderedList', 'quote', 'codeBlock', 'link', 'table',
 ]);
 const SECRET_KEY = /token|secret|authorization|credential|cookie|webhook|session|ticket|signature|(?:^|[_-])sign(?:$|[_-])|app[_-]?secret/i;
-const SENSITIVE_QUERY_KEY = /token|secret|access_token|authorization|credential|code|signature|sign|ticket|auth|session|webhook/i;
 const SAFE_OUTPUT_HEALTH_KEYS = new Set(['authenticated', 'authentication', 'authenticationstate']);
 const SENSITIVE_OUTPUT_STEMS = [
   'authorization', 'credential', 'accesstoken', 'authtoken', 'authcode',
@@ -25,7 +24,7 @@ function sanitizeUrl(value) {
     if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) return '';
     let changed = parsed.hash !== '';
     for (const key of [...parsed.searchParams.keys()]) {
-      if (SENSITIVE_QUERY_KEY.test(key)) {
+      if (isSensitiveQueryKey(key)) {
         parsed.searchParams.delete(key);
         changed = true;
       }
@@ -37,15 +36,20 @@ function sanitizeUrl(value) {
   }
 }
 
-function isSensitiveOutputKey(key) {
+function isSensitiveOutputKey(key, value) {
   const normalized = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
-  if (SAFE_OUTPUT_HEALTH_KEYS.has(normalized)) return false;
+  if (SAFE_OUTPUT_HEALTH_KEYS.has(normalized)) {
+    if (normalized === 'authenticated') return typeof value !== 'boolean';
+    const safeStatus = typeof value === 'boolean'
+      || (typeof value === 'string' && ['configured', 'ok', 'healthy', 'true', 'false'].includes(value.toLowerCase()));
+    return !safeStatus;
+  }
   return ['auth', 'code', 'sign'].includes(normalized)
     || SENSITIVE_OUTPUT_STEMS.some((stem) => normalized.includes(stem));
 }
 
-function keyIsSensitive(matcher, key) {
-  return typeof matcher === 'function' ? matcher(key) : matcher.test(key);
+function keyIsSensitive(matcher, key, value) {
+  return typeof matcher === 'function' ? matcher(key, value) : matcher.test(key);
 }
 
 function sanitizeRecursive(value, { allowlist = null, secretKey = SECRET_KEY } = {}, ancestors = new WeakSet(), depth = 0, key = '') {
@@ -70,7 +74,7 @@ function sanitizeRecursive(value, { allowlist = null, secretKey = SECRET_KEY } =
 
     const output = {};
     for (const [key, child] of Object.entries(value)) {
-      if (keyIsSensitive(secretKey, key) || (allowlist && !allowlist.has(key))) continue;
+      if (keyIsSensitive(secretKey, key, child) || (allowlist && !allowlist.has(key))) continue;
       const safeChild = sanitizeRecursive(child, { allowlist, secretKey }, ancestors, depth + 1, key);
       if (safeChild !== undefined) output[key] = safeChild;
     }
@@ -290,3 +294,5 @@ export function normalizeDocument({ node, blocks } = {}) {
     truncated: false,
   };
 }
+import { isSensitiveQueryKey } from './dingtalk-url-security.js';
+

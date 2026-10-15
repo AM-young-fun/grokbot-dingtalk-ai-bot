@@ -76,7 +76,7 @@ test('listNodes sends optional parent and normalizes terminal page', async () =>
 });
 
 test('resolveUrl validates and sends exact POST request', async () => {
-  const url = 'https://docs.dingtalk.com/i/nodes/abc?x=1';
+  const url = 'https://docs.dingtalk.com/i/nodes/abc?author=alice&postcode=90210&designation=owner';
   const { client, calls } = harness([{ nodeId: 'node-1' }]);
   assert.deepEqual(await client.resolveUrl(url), { nodeId: 'node-1' });
   assert.equal(calls[0].url, 'https://api.dingtalk.com/v2.0/wiki/nodes/queryByUrl?operatorId=operator+%2F+one');
@@ -93,6 +93,7 @@ test('resolveUrl rejects unsafe URLs before token or fetch', async () => {
     'https://docs.dingtalk.com.evil.test/a',
     'https://docs.dingtalk.com/a?access_token=hide',
     'https://docs.dingtalk.com/a?signature=hide',
+    'https://docs.dingtalk.com/a?api_key=hide',
     'https://docs.dingtalk.com/a#credential-fragment',
     'not a url',
   ];

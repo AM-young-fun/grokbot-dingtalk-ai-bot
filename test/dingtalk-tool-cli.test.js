@@ -173,7 +173,7 @@ test('read fails safely for unknown and confirmed non-ALIDOC node metadata', asy
 test('sanitizes nested secrets and credential-bearing URLs in every JSON command output', async () => {
   const dangerous = {
     id: 'keep-id', name: 'keep-name', title: 'note: keep me', authenticated: true,
-    authentication: true, authenticationState: true, page: { nextCursor: 'keep-page' },
+    authentication: 'configured', authenticationState: 'healthy', page: { nextCursor: 'keep-page' },
     accessToken: 'hide-token', nested: {
       secret: 'hide-secret',
       authorizationHeader: 'hide-authorization-header',
@@ -184,6 +184,9 @@ test('sanitizes nested secrets and credential-bearing URLs in every JSON command
       apiKey: 'hide-api-key',
       privateKey: 'hide-private-key',
       clientKey: 'hide-client-key',
+      unsafeHealth: {
+        authenticated: 'Bearer LEAK', authentication: 'Bearer LEAK', authenticationState: 'secret-state',
+      },
       url: 'https://user:pass@example.com/a?authorization=hide&keep=1#frag',
       publicUrl: 'https://example.com/a?keep=1&ticket=hide#frag',
     },
@@ -209,9 +212,10 @@ test('sanitizes nested secrets and credential-bearing URLs in every JSON command
     const serialized = JSON.stringify(output);
     assert.match(serialized, /note: keep me/);
     assert.match(serialized, /authenticated/);
-    assert.match(serialized, /"authentication":true/);
-    assert.match(serialized, /authenticationState/);
+    assert.match(serialized, /"authentication":"configured"/);
+    assert.match(serialized, /"authenticationState":"healthy"/);
     assert.doesNotMatch(serialized, /authorizationHeader|authorizationCode|signingKey|password|passphrase|apiKey|privateKey|clientKey/);
+    assert.doesNotMatch(serialized, /Bearer LEAK|secret-state/);
   }
 });
 

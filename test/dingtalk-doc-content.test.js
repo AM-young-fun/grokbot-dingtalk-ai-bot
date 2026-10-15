@@ -43,12 +43,12 @@ test('normalizes and renders realistic blockType payload objects', () => {
 
 test('sanitizes URL credentials, unsafe schemes, sensitive query params, and fragments', () => {
   const safe = sanitizeBlocks([
-    { type: 'link', url: 'https://example.com/a?keep=1&access_token=hide&signature=hide#frag' },
+    { type: 'link', url: 'https://example.com/a?keep=1&author=alice&postcode=90210&designation=owner&access_token=hide&api_key=hide&signature=hide#frag' },
     { type: 'link', url: 'https://user:pass@example.com/private' },
     { type: 'link', url: 'javascript:alert(1)' },
   ]);
   assert.deepEqual(safe, [
-    { type: 'link', url: 'https://example.com/a?keep=1' },
+    { type: 'link', url: 'https://example.com/a?keep=1&author=alice&postcode=90210&designation=owner' },
     { type: 'link', url: '' },
     { type: 'link', url: '' },
   ]);
