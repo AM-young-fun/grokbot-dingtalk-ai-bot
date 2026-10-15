@@ -38,7 +38,7 @@ DINGTALK_CLIENT_SECRET
 
 It does not introduce a second AppKey/AppSecret file or a separate service API key. The CLI exchanges these credentials for a DingTalk application access token and caches it in memory for the life of the process, refreshing before expiry or once after an authentication rejection.
 
-Some DingTalk document endpoints require an `operatorId`/`unionId` in addition to the application token. If required by the verified endpoint, the CLI reads one additional non-secret variable:
+The verified DingTalk document endpoints require an `operatorId`/`unionId` in addition to the application token. The CLI therefore reads one additional non-secret variable:
 
 ```text
 DINGTALK_OPERATOR_ID
