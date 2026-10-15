@@ -40,7 +40,7 @@ function harness(client, overrides = {}) {
 test('dispatches every non-read command with exact arguments and JSON envelopes', async () => {
   const calls = [];
   const client = {
-    async health() { calls.push(['health']); return { healthy: true }; },
+    async health() { calls.push(['health']); return { healthy: true, authenticated: true }; },
     async listWorkspaces(value) { calls.push(['listWorkspaces', value]); return { data: ['w'], page: { hasMore: true } }; },
     async getWorkspace(value) { calls.push(['getWorkspace', value]); return { id: value }; },
     async listNodes(value) { calls.push(['listNodes', value]); return { data: ['n'], page: { hasMore: false } }; },
@@ -62,6 +62,7 @@ test('dispatches every non-read command with exact arguments and JSON envelopes'
     assert.deepEqual(calls.at(-1), expected);
     const parsed = JSON.parse(h.output().stdout);
     assert.equal(parsed.ok, true);
+    if (argv[0] === 'health') assert.equal(parsed.data.authenticated, true);
     assert.equal(h.output().stderr, '');
   }
   assert.deepEqual(JSON.parse(harness(client).output().stdout || 'null'), null);
@@ -171,7 +172,8 @@ test('read fails safely for unknown and confirmed non-ALIDOC node metadata', asy
 
 test('sanitizes nested secrets and credential-bearing URLs in every JSON command output', async () => {
   const dangerous = {
-    id: 'keep-id', name: 'keep-name', page: { nextCursor: 'keep-page' },
+    id: 'keep-id', name: 'keep-name', title: 'note: keep me', authenticated: true,
+    authenticationState: true, page: { nextCursor: 'keep-page' },
     accessToken: 'hide-token', nested: {
       secret: 'hide-secret',
       url: 'https://user:pass@example.com/a?authorization=hide&keep=1#frag',
@@ -195,6 +197,11 @@ test('sanitizes nested secrets and credential-bearing URLs in every JSON command
     assert.equal(await h.run(argv), 0);
     assert.doesNotMatch(h.output().stdout, /hide-|user:pass|authorization=|ticket=|#frag/i);
     assert.match(h.output().stdout, /keep-id|keep-page/);
+    const output = JSON.parse(h.output().stdout);
+    const serialized = JSON.stringify(output);
+    assert.match(serialized, /note: keep me/);
+    assert.match(serialized, /authenticated/);
+    assert.match(serialized, /authenticationState/);
   }
 });
 

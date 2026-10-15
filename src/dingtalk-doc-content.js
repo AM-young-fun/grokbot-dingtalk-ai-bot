@@ -6,7 +6,6 @@ const SAFE_FIELDS = new Set([
   'paragraph', 'heading', 'unorderedList', 'orderedList', 'quote', 'codeBlock', 'link', 'table',
 ]);
 const SECRET_KEY = /token|secret|authorization|credential|cookie|webhook|session|ticket|signature|(?:^|[_-])sign(?:$|[_-])|app[_-]?secret/i;
-const OUTPUT_SECRET_KEY = /token|secret|access_token|authorization|credential|code|signature|sign|ticket|auth|session|webhook/i;
 const SENSITIVE_QUERY_KEY = /token|secret|access_token|authorization|credential|code|signature|sign|ticket|auth|session|webhook/i;
 const MAX_DEPTH = 64;
 const CIRCULAR_MARKER = '[Circular]';
@@ -31,11 +30,27 @@ function sanitizeUrl(value) {
   }
 }
 
+function isSensitiveOutputKey(key) {
+  const normalized = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  if (['authenticated', 'authentication', 'authenticationstate'].includes(normalized)) return false;
+  if (/token|secret|credential|signature|ticket|session|webhook/.test(normalized)) return true;
+  return ['authorization', 'code', 'sign', 'auth', 'authcode', 'authtoken', 'authsecret', 'authcredential']
+    .includes(normalized);
+}
+
+function keyIsSensitive(matcher, key) {
+  return typeof matcher === 'function' ? matcher(key) : matcher.test(key);
+}
+
 function sanitizeRecursive(value, { allowlist = null, secretKey = SECRET_KEY } = {}, ancestors = new WeakSet(), depth = 0, key = '') {
   if (depth >= MAX_DEPTH) return DEPTH_MARKER;
   if (value === null || ['number', 'boolean'].includes(typeof value)) return value;
   if (typeof value === 'string') {
-    const looksLikeUrl = /url|href|uri/i.test(key) || /^[a-z][a-z\d+.-]*:/i.test(value);
+    const normalizedKey = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
+    const urlKey = /(?:url|uri)$/.test(normalizedKey)
+      || ['url', 'uri', 'href', 'link', 'webhook', 'downloadlink'].includes(normalizedKey);
+    const explicitUrl = /^https?:\/\//i.test(value) || /^(?:javascript|data):/i.test(value);
+    const looksLikeUrl = urlKey || explicitUrl;
     return looksLikeUrl ? sanitizeUrl(value) : value;
   }
   if (!value || typeof value !== 'object') return undefined;
@@ -49,7 +64,7 @@ function sanitizeRecursive(value, { allowlist = null, secretKey = SECRET_KEY } =
 
     const output = {};
     for (const [key, child] of Object.entries(value)) {
-      if (secretKey.test(key) || (allowlist && !allowlist.has(key))) continue;
+      if (keyIsSensitive(secretKey, key) || (allowlist && !allowlist.has(key))) continue;
       const safeChild = sanitizeRecursive(child, { allowlist, secretKey }, ancestors, depth + 1, key);
       if (safeChild !== undefined) output[key] = safeChild;
     }
@@ -64,7 +79,7 @@ function sanitizeValue(value) {
 }
 
 export function sanitizeOutput(value) {
-  return sanitizeRecursive(value, { secretKey: OUTPUT_SECRET_KEY });
+  return sanitizeRecursive(value, { secretKey: isSensitiveOutputKey });
 }
 
 export function sanitizeBlocks(blocks) {
