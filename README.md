@@ -248,13 +248,43 @@ docker compose exec bot-one dingtalk-grokbot-tool read --node-id 'NODE_ID' --for
 docker compose exec bot-one dingtalk-grokbot-tool read --node-id 'NODE_ID' --format markdown
 docker compose exec bot-one dingtalk-grokbot-tool read --node-id 'NODE_ID' --format text
 
-# 6. 使用已知无权节点；预期 stderr code 为 DOCUMENT_FORBIDDEN、退出码为 4
+# 6. 使用已知无权节点；只检查安全错误码，不把响应正文打印到日志
+forbidden_error=$(mktemp)
+set +e
 docker compose exec bot-one dingtalk-grokbot-tool node \
-  --node-id 'KNOWN_UNAUTHORIZED_NODE_ID'
+  --node-id 'KNOWN_UNAUTHORIZED_NODE_ID' >/dev/null 2>"$forbidden_error"
+code=$?
+set -e
+test "$code" -eq 4
+node -e 'const fs=require("node:fs");const value=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(value?.error?.code!=="DOCUMENT_FORBIDDEN")process.exit(1);console.log(value.error.code)' \
+  "$forbidden_error"
+rm "$forbidden_error"
 
-# 7. 验证两个容器各自只能看到预期授权范围，不混用配置
-docker compose exec bot-one dingtalk-grokbot-tool workspaces --limit 20
-docker compose exec bot-two dingtalk-grokbot-tool workspaces --limit 20
+# 7. 先写明两个 bot 各自预期的完整 workspace ID 集合
+acceptance_dir=$(mktemp -d)
+printf '%s\n' '["BOT_ONE_EXPECTED_WORKSPACE_ID_1","BOT_ONE_EXPECTED_WORKSPACE_ID_2"]' \
+  | jq 'sort' >"$acceptance_dir/bot-one-expected.json"
+printf '%s\n' '["BOT_TWO_EXPECTED_WORKSPACE_ID_1"]' \
+  | jq 'sort' >"$acceptance_dir/bot-two-expected.json"
+
+# 分别保存第一页；只要 hasMore=true，就把该响应的 nextCursor 代入并保存下一页
+docker compose exec bot-one dingtalk-grokbot-tool workspaces --limit 20 \
+  >"$acceptance_dir/bot-one-page-1.json"
+docker compose exec bot-one dingtalk-grokbot-tool workspaces --limit 20 \
+  --cursor 'BOT_ONE_NEXT_CURSOR_VALUE' >"$acceptance_dir/bot-one-page-2.json"
+docker compose exec bot-two dingtalk-grokbot-tool workspaces --limit 20 \
+  >"$acceptance_dir/bot-two-page-1.json"
+docker compose exec bot-two dingtalk-grokbot-tool workspaces --limit 20 \
+  --cursor 'BOT_TWO_NEXT_CURSOR_VALUE' >"$acceptance_dir/bot-two-page-2.json"
+
+# 两边都必须重复分页到 hasMore=false，再比较完整集合；第一页不能证明隔离
+jq -s '[.[].data[] | .workspaceId] | unique | sort' \
+  "$acceptance_dir"/bot-one-page-*.json >"$acceptance_dir/bot-one-observed.json"
+jq -s '[.[].data[] | .workspaceId] | unique | sort' \
+  "$acceptance_dir"/bot-two-page-*.json >"$acceptance_dir/bot-two-observed.json"
+diff -u "$acceptance_dir/bot-one-expected.json" "$acceptance_dir/bot-one-observed.json"
+diff -u "$acceptance_dir/bot-two-expected.json" "$acceptance_dir/bot-two-observed.json"
+rm -r "$acceptance_dir"
 
 # 8. 记录 bot-two 状态，只重启 bot-one，再确认 bot-two 未重启且仍可访问
 bot_two_id=$(docker compose ps -q bot-two)
@@ -282,7 +312,7 @@ docker compose exec bot-two dingtalk-grokbot-tool health
 
 Compose 示例从同一个 Dockerfile 构建一个镜像，并启动 `bot-one`、`bot-two` 两个服务。两者分别使用环境文件、日志和重启生命周期；不暴露端口。
 
-全新 checkout 不包含被忽略的本地 env 文件，因此在创建它们之前，`docker compose config` 和 `docker compose up` 会因找不到 `deploy/bots/bot-one.env` 或 `deploy/bots/bot-two.env` 而失败。必须先复制或创建两个文件，再分别填写真实且独立的配置。不要提交生成的 `.env` 文件：
+全新 checkout 不包含被忽略的本地 env 文件，因此在创建它们之前，`docker compose config -q` 和 `docker compose up` 会因找不到 `deploy/bots/bot-one.env` 或 `deploy/bots/bot-two.env` 而失败。必须先复制或创建两个文件，再分别填写真实且独立的配置。不要提交生成的 `.env` 文件：
 
 ```bash
 cp deploy/bots/bot-one.env.example deploy/bots/bot-one.env
@@ -292,10 +322,12 @@ cp deploy/bots/bot-two.env.example deploy/bots/bot-two.env
 确认配置可解析，再构建并启动：
 
 ```bash
-docker compose config
+docker compose config -q
 docker compose up -d --build
 docker compose ps
 ```
+
+不要在日志或工单中运行、粘贴不带 `-q` 的 `docker compose config` 输出；它会展开并打印 env 文件中的实际配置值。
 
 每个容器都包含 `dingtalk-grokbot-tool`。CLI 共享该服务的进程环境，可分别检查配置和工作区：
 
