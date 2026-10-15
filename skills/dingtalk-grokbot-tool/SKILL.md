@@ -5,7 +5,7 @@ description: Use when reading DingTalk knowledge-base workspaces, nodes, or ALID
 
 # DingTalk Grokbot Read Tool
 
-Use only `npm run tool -- ...` from this repository. It inherits `DINGTALK_CLIENT_ID`, `DINGTALK_CLIENT_SECRET`, and `DINGTALK_OPERATOR_ID` from the bot container. `DINGTALK_OPERATOR_ID` is the acting user's unionId.
+Use only `npm run tool -- ...` from this repository. The CLI reads `DINGTALK_CLIENT_ID`, `DINGTALK_CLIENT_SECRET`, and `DINGTALK_OPERATOR_ID` from its invoking process environment. `DINGTALK_OPERATOR_ID` is the acting user's unionId.
 
 ## Route the request
 
@@ -43,6 +43,8 @@ npm run tool -- read --node-id NODE_ID --format text
 - `blocks`: exact normalized structure.
 - `markdown`: best human-reading context.
 - `text`: simple extraction only.
+
+**Hard rule:** When exact or structured content matters, read `--format json` or `--format blocks` before summarizing. Never summarize from `markdown` or `text` first; those renderings can lose structure.
 
 Successful structured commands emit `{"ok":true,"data":...}`; paginated commands also emit `page`. Markdown/text reads emit plain stdout. Errors emit safe JSON on stderr.
 

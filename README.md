@@ -159,7 +159,7 @@ node --check src/index.js
 - `Document.WorkspaceDocument.Read`
 - `Wiki.Node.Read`
 
-`DINGTALK_OPERATOR_ID` 必须是执行读取操作用户的 `unionId`。CLI 继承 bot 容器的环境变量；不要提交或打印这些值：
+`DINGTALK_OPERATOR_ID` 必须是执行读取操作用户的 `unionId`。CLI 从启动它的进程环境读取以下变量；不要提交或打印这些值：
 
 ```bash
 export DINGTALK_CLIENT_ID='替换为 Client ID'
@@ -196,7 +196,7 @@ npm run tool -- read --node-id NODE_ID [--format json|markdown|text|blocks]
 {"ok":true,"data":{}}
 ```
 
-`workspaces` 和 `nodes` 额外返回 `page.nextCursor` 与 `page.hasMore`。只要 `hasMore` 为 `true`，就必须把 `nextCursor` 传给下一次 `--cursor`；未读取所有页时不能声称结果完整。`markdown` 与 `text` 格式直接输出纯文本；`json` 返回规范化文档全量信息；`blocks` 用于保留精确块结构。
+`workspaces` 和 `nodes` 额外返回 `page.nextCursor` 与 `page.hasMore`。只要 `hasMore` 为 `true`，就必须把 `nextCursor` 传给下一次 `--cursor`；未读取所有页时不能声称结果完整。`markdown` 与 `text` 格式直接输出纯文本；`json` 返回规范化文档全量信息；`blocks` 用于保留精确块结构。需要精确内容或结构时，必须先读取 `--format json` 或 `--format blocks`，再做总结；不能先根据会丢失结构的 `markdown` 或 `text` 总结。
 
 错误以安全 JSON 写入 stderr：
 
@@ -206,7 +206,7 @@ npm run tool -- read --node-id NODE_ID [--format json|markdown|text|blocks]
 
 退出码：`0` 成功，`1` 未预期错误，`2` 参数错误，`3` 缺少环境变量，`4` 认证失败或无权限，`5` 未找到或内容类型不支持，`6` 限流，`7` 超时或上游错误。空列表、无权限、不支持类型和未完成分页都只是有边界的结果，不能据此断言内容不存在。
 
-CLI 只支持 URL/ID 定位和目录逐层浏览，不提供全文搜索，不支持创建、更新、删除、复制、移动或权限变更。不要输出凭据、access token 或完整敏感 URL。后续可把同一只读 bin 放入 Docker bot 容器并继承上述环境变量；当前仓库尚未提供对应 Docker 命令或文件。
+CLI 只支持 URL/ID 定位和目录逐层浏览，不提供全文搜索，不支持创建、更新、删除、复制、移动或权限变更。不要输出凭据、access token 或完整敏感 URL。后续若把同一只读 bin 放入 Docker bot 容器，需要向容器内启动 CLI 的进程注入上述环境变量；当前仓库尚未提供对应 Docker 命令或文件。
 
 `npm test` 覆盖参数、输出格式、分页、内容规范化及错误映射，但不证明真实钉钉账号、权限、网络或文档可用。上线前仍需使用目标用户 `unionId` 执行 `health`，并对授权工作区完成一次真实的列表、解析和读取验证。
 
