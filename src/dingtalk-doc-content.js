@@ -7,6 +7,12 @@ const SAFE_FIELDS = new Set([
 ]);
 const SECRET_KEY = /token|secret|authorization|credential|cookie|webhook|session|ticket|signature|(?:^|[_-])sign(?:$|[_-])|app[_-]?secret/i;
 const SENSITIVE_QUERY_KEY = /token|secret|access_token|authorization|credential|code|signature|sign|ticket|auth|session|webhook/i;
+const SAFE_OUTPUT_HEALTH_KEYS = new Set(['authenticated', 'authentication', 'authenticationstate']);
+const SENSITIVE_OUTPUT_STEMS = [
+  'authorization', 'credential', 'accesstoken', 'authtoken', 'authcode',
+  'appsecret', 'clientsecret', 'signingkey', 'signature', 'sessiontoken',
+  'webhook', 'cookie', 'bearer', 'ticket', 'token', 'secret',
+];
 const MAX_DEPTH = 64;
 const CIRCULAR_MARKER = '[Circular]';
 const DEPTH_MARKER = '[Max depth]';
@@ -32,10 +38,9 @@ function sanitizeUrl(value) {
 
 function isSensitiveOutputKey(key) {
   const normalized = key.replace(/[^a-z0-9]/gi, '').toLowerCase();
-  if (['authenticated', 'authentication', 'authenticationstate'].includes(normalized)) return false;
-  if (/token|secret|credential|signature|ticket|session|webhook/.test(normalized)) return true;
-  return ['authorization', 'code', 'sign', 'auth', 'authcode', 'authtoken', 'authsecret', 'authcredential']
-    .includes(normalized);
+  if (SAFE_OUTPUT_HEALTH_KEYS.has(normalized)) return false;
+  return ['auth', 'code', 'sign'].includes(normalized)
+    || SENSITIVE_OUTPUT_STEMS.some((stem) => normalized.includes(stem));
 }
 
 function keyIsSensitive(matcher, key) {

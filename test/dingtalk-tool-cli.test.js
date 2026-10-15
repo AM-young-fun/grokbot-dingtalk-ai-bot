@@ -173,9 +173,12 @@ test('read fails safely for unknown and confirmed non-ALIDOC node metadata', asy
 test('sanitizes nested secrets and credential-bearing URLs in every JSON command output', async () => {
   const dangerous = {
     id: 'keep-id', name: 'keep-name', title: 'note: keep me', authenticated: true,
-    authenticationState: true, page: { nextCursor: 'keep-page' },
+    authentication: true, authenticationState: true, page: { nextCursor: 'keep-page' },
     accessToken: 'hide-token', nested: {
       secret: 'hide-secret',
+      authorizationHeader: 'hide-authorization-header',
+      authorizationCode: 'hide-authorization-code',
+      signingKey: 'hide-signing-key',
       url: 'https://user:pass@example.com/a?authorization=hide&keep=1#frag',
       publicUrl: 'https://example.com/a?keep=1&ticket=hide#frag',
     },
@@ -201,7 +204,9 @@ test('sanitizes nested secrets and credential-bearing URLs in every JSON command
     const serialized = JSON.stringify(output);
     assert.match(serialized, /note: keep me/);
     assert.match(serialized, /authenticated/);
+    assert.match(serialized, /"authentication":true/);
     assert.match(serialized, /authenticationState/);
+    assert.doesNotMatch(serialized, /authorizationHeader|authorizationCode|signingKey/);
   }
 });
 
