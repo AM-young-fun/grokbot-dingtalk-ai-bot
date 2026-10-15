@@ -175,6 +175,32 @@ test('rejects content-length and actual bodies over maxResponseBytes', async () 
   await assert.rejects(actual.getNode('node'), (error) => error.code === 'UPSTREAM_ERROR');
 });
 
+test('stops and cancels streamed body as soon as cumulative bytes exceed limit', async () => {
+  let pulls = 0;
+  let cancelled = false;
+  const chunks = [
+    new TextEncoder().encode('{"a":"'),
+    new TextEncoder().encode('too-long'),
+    new TextEncoder().encode('never-consumed"}'),
+  ];
+  const body = new ReadableStream({
+    pull(controller) {
+      pulls += 1;
+      controller.enqueue(chunks.shift());
+      if (chunks.length === 0) controller.close();
+    },
+    cancel() {
+      cancelled = true;
+    },
+  }, { highWaterMark: 0 });
+  const client = harness([new Response(body)], { maxResponseBytes: 10 }).client;
+
+  await assert.rejects(client.getNode('node'), (error) => error.code === 'UPSTREAM_ERROR');
+  assert.equal(cancelled, true);
+  assert.equal(pulls, 2);
+  assert.equal(chunks.length, 1);
+});
+
 test('rejects malformed JSON and bounds response body reading by timeout', async () => {
   const malformed = harness([new Response('not-json')]).client;
   await assert.rejects(malformed.getNode('node'), (error) => error.code === 'UPSTREAM_ERROR');

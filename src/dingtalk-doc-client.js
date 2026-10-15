@@ -59,6 +59,48 @@ function normalizePage(payload, collectionKey) {
   return { data, page: { nextCursor: nextToken, hasMore: Boolean(nextToken) } };
 }
 
+async function readBoundedBody(response, maxResponseBytes, timeout) {
+  if (!response.body || typeof response.body.getReader !== 'function') {
+    const bytes = new Uint8Array(await Promise.race([response.arrayBuffer(), timeout]));
+    if (bytes.byteLength > maxResponseBytes) {
+      throw new ToolError('UPSTREAM_ERROR', 'DingTalk response exceeded size limit');
+    }
+    return bytes;
+  }
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let length = 0;
+  try {
+    while (true) {
+      const { done, value } = await Promise.race([reader.read(), timeout]);
+      if (done) break;
+      const chunk = value instanceof Uint8Array ? value : new Uint8Array(value);
+      length += chunk.byteLength;
+      if (length > maxResponseBytes) {
+        await reader.cancel();
+        throw new ToolError('UPSTREAM_ERROR', 'DingTalk response exceeded size limit');
+      }
+      chunks.push(chunk);
+    }
+  } catch (error) {
+    if (!(error instanceof ToolError && error.code === 'UPSTREAM_ERROR')) {
+      void reader.cancel().catch(() => {});
+    }
+    throw error;
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(length);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes;
+}
+
 export function createDingTalkDocClient({
   tokenProvider,
   operatorId,
@@ -112,10 +154,7 @@ export function createDingTalkDocClient({
             && Number(declaredLength) > maxResponseBytes) {
           throw new ToolError('UPSTREAM_ERROR', 'DingTalk response exceeded size limit');
         }
-        const bytes = new Uint8Array(await Promise.race([response.arrayBuffer(), timeout]));
-        if (bytes.byteLength > maxResponseBytes) {
-          throw new ToolError('UPSTREAM_ERROR', 'DingTalk response exceeded size limit');
-        }
+        const bytes = await readBoundedBody(response, maxResponseBytes, timeout);
         try {
           return JSON.parse(new TextDecoder().decode(bytes));
         } catch {
