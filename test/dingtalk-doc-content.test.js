@@ -106,7 +106,7 @@ test('normalizes document metadata and removes nested credentials everywhere', (
       id: 'node-1', title: 'Safe title', type: 'document', url: 'https://docs.dingtalk.com/x',
       children: [{ id: 'child', title: 'Safe child' }],
     },
-    contentType: 'markdown',
+    contentType: 'document',
     markdown: 'Body',
     text: 'Body',
     blocks: [{ type: 'paragraph', text: 'Body' }],
@@ -125,10 +125,16 @@ test('handles null and malformed block inputs safely and deterministically', () 
   const odd = [null, 3, {}, { type: null }, { type: 'paragraph', content: Symbol('odd') }];
   assert.doesNotThrow(() => normalizeDocument({ node: null, blocks: odd }));
   assert.deepEqual(normalizeDocument({ node: null, blocks: odd }), {
-    node: {}, contentType: 'markdown',
+    node: {}, contentType: null,
     markdown: '[Unsupported block: unknown]\n\n[Unsupported block: unknown]\n\n[Unsupported block: unknown]\n\n[Unsupported block: unknown]\n\n',
     text: '[Unsupported block: unknown]\n\n[Unsupported block: unknown]\n\n[Unsupported block: unknown]\n\n[Unsupported block: unknown]\n\n',
     blocks: [null, 3, {}, { type: null }, { type: 'paragraph' }],
     unsupportedBlockTypes: ['unknown'], truncated: false,
   });
+});
+
+test('normalizes contentType from sanitized node metadata with type fallback', () => {
+  assert.equal(normalizeDocument({ node: { contentType: 'sheet', type: 'document' }, blocks: [] }).contentType, 'sheet');
+  assert.equal(normalizeDocument({ node: { type: 'document' }, blocks: [] }).contentType, 'document');
+  assert.equal(normalizeDocument({ node: {}, blocks: [] }).contentType, null);
 });

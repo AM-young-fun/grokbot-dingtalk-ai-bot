@@ -1,6 +1,6 @@
 const SAFE_FIELDS = new Set([
   'id', 'index', 'type', 'kind', 'text', 'content', 'children', 'element', 'elements', 'items',
-  'rows', 'cells', 'url', 'title', 'language', 'level', 'name', 'value',
+  'rows', 'cells', 'url', 'title', 'language', 'level', 'name', 'value', 'contentType',
   'docKey', 'nodeId', 'workspaceId', 'parentNodeId',
 ]);
 const SECRET_KEY = /token|secret|authorization|credential|cookie|webhook|app[_-]?secret/i;
@@ -173,9 +173,10 @@ export function normalizeDocument({ node, blocks } = {}) {
     }
   }
   const safeNode = sanitizeValue(node);
+  const normalizedNode = safeNode && !Array.isArray(safeNode) && typeof safeNode === 'object' ? safeNode : {};
   return {
-    node: safeNode && !Array.isArray(safeNode) && typeof safeNode === 'object' ? safeNode : {},
-    contentType: 'markdown',
+    node: normalizedNode,
+    contentType: normalizedNode.contentType ?? normalizedNode.type ?? null,
     markdown: safeBlocks.map(markdownBlock).join('\n\n'),
     text: safeBlocks.map(textBlock).join('\n\n'),
     blocks: safeBlocks,
