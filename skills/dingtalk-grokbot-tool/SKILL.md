@@ -44,7 +44,7 @@ npm run tool -- read --node-id NODE_ID --format text
 - `markdown`: best human-reading context.
 - `text`: simple extraction only.
 
-**Hard rule:** When structure matters, read `--format json` or `--format blocks` before summarizing. Then inspect and disclose `unsupportedBlockTypes` and normalization limits. Fields may be omitted, so exact source fidelity is unavailable and must never be claimed. Never summarize from `markdown` or `text` first; those renderings lose more structure.
+**Hard rule:** When structure matters, read `--format json` or `--format blocks` before summarizing. Only JSON exposes `unsupportedBlockTypes`; inspect and disclose that field plus normalization limits. If blocks were read first, also run `--format json` before any completeness or fidelity statement. Fields may be omitted, so exact source fidelity is unavailable and must never be claimed. Never summarize from `markdown` or `text` first; those renderings lose more structure.
 
 Successful structured commands emit `{"ok":true,"data":...}`; paginated commands also emit `page`. Markdown/text reads emit plain stdout. Errors emit safe JSON on stderr.
 
