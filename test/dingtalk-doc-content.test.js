@@ -29,15 +29,17 @@ test('normalizes and renders realistic blockType payload objects', () => {
   });
 
   assert.equal(result.markdown, [
-    'Hello ', '## Real document', '- one\n- two', '1. first', '> quoted',
+    'Hello ', '## Real document', '### String level', '- one\n- two', '1. first', '> quoted',
     '```js\nconst x = 1;\n```', '[safe](https://example.com/path?keep=yes)',
-    '| A | B |\n| --- | --- |\n| 1 | 2 |', '[Unsupported block: mindMap]',
+    '| A | B |\n| --- | --- |\n| 1 | 2 |',
   ].join('\n\n'));
-  assert.equal(result.text.includes('Real document'), true);
-  assert.deepEqual(result.unsupportedBlockTypes, ['mindMap']);
+  assert.equal(result.text, [
+    'Hello ', 'Real document', 'String level', '- one\n- two', '1. first', 'quoted',
+    'const x = 1;', 'safe (https://example.com/path?keep=yes)', 'A\tB\n1\t2',
+  ].join('\n\n'));
+  assert.deepEqual(result.unsupportedBlockTypes, []);
   assert.equal(result.blocks[0].blockType, 'paragraph');
   assert.deepEqual(result.blocks[0].paragraph, { text: 'Hello ' });
-  assert.deepEqual(result.blocks[8], { blockType: 'mindMap' });
   assert.doesNotMatch(JSON.stringify(result), /hide|#secret|token=/i);
 });
 

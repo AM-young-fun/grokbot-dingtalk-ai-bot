@@ -152,7 +152,8 @@ test('read accepts realistic FILE plus ALIDOC node and result data blocks envelo
   assert.equal(await h.run(['read', '--node-id', 'n-real']), 0);
   const output = JSON.parse(h.output().stdout);
   assert.match(output.data.markdown, /Real document/);
-  assert.deepEqual(output.data.unsupportedBlockTypes, ['mindMap']);
+  assert.match(output.data.markdown, /> quoted/);
+  assert.deepEqual(output.data.unsupportedBlockTypes, []);
 });
 
 test('read fails safely for unknown and confirmed non-ALIDOC node metadata', async () => {

@@ -3,7 +3,7 @@ const SAFE_FIELDS = new Set([
   'text', 'content', 'children', 'element', 'elements', 'items',
   'rows', 'cells', 'url', 'title', 'language', 'level', 'name', 'value', 'contentType',
   'docKey', 'nodeId', 'workspaceId', 'parentNodeId',
-  'paragraph', 'heading', 'unorderedList', 'orderedList', 'quote', 'codeBlock', 'link', 'table',
+  'paragraph', 'heading', 'unorderedList', 'orderedList', 'quote', 'blockquote', 'codeBlock', 'link', 'table',
 ]);
 const SECRET_KEY = /token|secret|authorization|credential|cookie|webhook|session|ticket|signature|(?:^|[_-])sign(?:$|[_-])|app[_-]?secret/i;
 const SAFE_OUTPUT_HEALTH_KEYS = new Set(['authenticated', 'authentication', 'authenticationstate']);
@@ -105,10 +105,11 @@ function blockType(block) {
 }
 
 function canonicalType(block) {
-  return blockType(block)
+  const canonical = blockType(block)
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
     .toLowerCase()
     .replace(/[\s-]+/g, '_');
+  return /^heading_[0-9]+$/.test(canonical) ? 'heading' : canonical;
 }
 
 function plain(value) {
@@ -172,7 +173,8 @@ function payloadOf(block) {
   const type = canonicalType(block);
   const payloadKeys = {
     paragraph: 'paragraph', heading: 'heading', unordered_list: 'unorderedList',
-    ordered_list: 'orderedList', quote: 'quote', code_block: 'codeBlock', link: 'link', table: 'table',
+    ordered_list: 'orderedList', quote: 'quote', blockquote: 'blockquote',
+    code_block: 'codeBlock', link: 'link', table: 'table',
   };
   return block[payloadKeys[type]] ?? block;
 }
@@ -212,7 +214,9 @@ function markdownBlock(block) {
   if (type === 'paragraph') return inlineMarkdown(contentOf(block));
   if (type === 'heading') {
     const levelValue = payloadOf(block)?.level;
-    const level = Number.isInteger(levelValue) ? Math.min(6, Math.max(1, levelValue)) : 1;
+    const suffix = blockType(block).match(/^heading[-_ ]?([0-9]+)$/i)?.[1];
+    const numericLevel = suffix === undefined ? Number(levelValue) : Number(suffix);
+    const level = Number.isInteger(numericLevel) ? Math.min(6, Math.max(1, numericLevel)) : 1;
     return `${'#'.repeat(level)} ${inlineMarkdown(contentOf(block))}`.trimEnd();
   }
   if (['unordered_list', 'bullet_list', 'ul'].includes(type)) {
@@ -247,7 +251,7 @@ function markdownBlock(block) {
 function textBlock(block) {
   const rawType = blockType(block);
   const type = canonicalType(block);
-  if (['paragraph', 'heading', 'quote', 'code_block', 'code'].includes(type)) return inlineText(contentOf(block));
+  if (['paragraph', 'heading', 'quote', 'blockquote', 'code_block', 'code'].includes(type)) return inlineText(contentOf(block));
   if (['unordered_list', 'bullet_list', 'ul'].includes(type)) {
     return listItems(block).map((item) => `- ${inlineText(contentOf(item))}`).join('\n');
   }

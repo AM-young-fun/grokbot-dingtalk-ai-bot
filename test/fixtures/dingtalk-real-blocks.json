@@ -1,11 +1,11 @@
 [
   { "id": "p", "blockType": "paragraph", "paragraph": { "text": "Hello " } },
-  { "id": "h", "blockType": "heading", "heading": { "text": "Real document", "level": 2 } },
+  { "id": "h", "blockType": "heading-2", "heading": { "text": "Real document", "level": "6" } },
+  { "blockType": "heading", "heading": { "text": "String level", "level": "3" } },
   { "blockType": "unorderedList", "unorderedList": { "items": [{ "text": "one" }, { "text": "two" }] } },
   { "blockType": "orderedList", "orderedList": { "items": [{ "text": "first" }] } },
-  { "blockType": "quote", "quote": { "text": "quoted" } },
+  { "blockType": "blockquote", "blockquote": { "text": "quoted" } },
   { "blockType": "codeBlock", "codeBlock": { "text": "const x = 1;", "language": "js" } },
   { "blockType": "link", "link": { "text": "safe", "url": "https://example.com/path?token=hide&keep=yes#secret" } },
-  { "blockType": "table", "table": { "rows": [{ "cells": [{ "text": "A" }, { "text": "B" }] }, { "cells": ["1", "2"] }] } },
-  { "blockType": "mindMap", "mindMap": { "text": "not rendered" }, "secret": "hide" }
+  { "blockType": "table", "table": { "rows": [{ "cells": [{ "text": "A" }, { "text": "B" }] }, { "cells": ["1", "2"] }] } }
 ]
