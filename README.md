@@ -149,6 +149,67 @@ node --check src/index.js
 
 自动测试覆盖配置校验、群聊 `@` 过滤、单聊、空消息、非文本消息、钉钉回复格式、Grokbot 异常和 Stream ACK。
 
+## 钉钉知识库只读 CLI
+
+仓库同时提供 `dingtalk-grokbot-tool` package bin，用于读取钉钉知识库工作区、节点和 ALIDOC 文档。它不修改钉钉数据，也不影响现有 Stream bridge。
+
+先给企业内部应用开通以下只读权限：
+
+- `Document.Workspace.Read`
+- `Document.WorkspaceDocument.Read`
+- `Wiki.Node.Read`
+
+`DINGTALK_OPERATOR_ID` 必须是执行读取操作用户的 `unionId`。CLI 继承 bot 容器的环境变量；不要提交或打印这些值：
+
+```bash
+export DINGTALK_CLIENT_ID='替换为 Client ID'
+export DINGTALK_CLIENT_SECRET='替换为 Client Secret'
+export DINGTALK_OPERATOR_ID='替换为用户 unionId'
+```
+
+安装依赖后，可用仓库脚本运行 package bin：
+
+```bash
+npm install
+npm run tool -- health
+```
+
+安装本 package 的环境也会得到 `dingtalk-grokbot-tool` bin；以下命令均可将 `npm run tool --` 替换成 `dingtalk-grokbot-tool`。
+
+完整命令和选项：
+
+```bash
+npm run tool -- health
+npm run tool -- workspaces [--cursor CURSOR] [--limit 1..100]
+npm run tool -- workspace --workspace-id WORKSPACE_ID
+npm run tool -- nodes --workspace-id WORKSPACE_ID [--parent-node-id PARENT_NODE_ID] [--cursor CURSOR] [--limit 1..100]
+npm run tool -- node --node-id NODE_ID
+npm run tool -- resolve --url 'https://docs.dingtalk.com/...'
+npm run tool -- read --node-id NODE_ID [--format json|markdown|text|blocks]
+```
+
+`workspaces` 默认 `--limit 20`，`nodes` 默认 `--limit 50`，`read` 默认 `--format json`。已知 URL 时先 `resolve`，再用返回的节点 ID 执行 `read`；已知节点时可直接 `read`，需要标题、类型或父级信息时先执行 `node`。位置未知时先列出 `workspaces`，再从工作区根节点开始用 `nodes` 逐层浏览。
+
+结构化成功输出为单行 JSON：
+
+```json
+{"ok":true,"data":{}}
+```
+
+`workspaces` 和 `nodes` 额外返回 `page.nextCursor` 与 `page.hasMore`。只要 `hasMore` 为 `true`，就必须把 `nextCursor` 传给下一次 `--cursor`；未读取所有页时不能声称结果完整。`markdown` 与 `text` 格式直接输出纯文本；`json` 返回规范化文档全量信息；`blocks` 用于保留精确块结构。
+
+错误以安全 JSON 写入 stderr：
+
+```json
+{"ok":false,"error":{"code":"DOCUMENT_FORBIDDEN","message":"..."}}
+```
+
+退出码：`0` 成功，`1` 未预期错误，`2` 参数错误，`3` 缺少环境变量，`4` 认证失败或无权限，`5` 未找到或内容类型不支持，`6` 限流，`7` 超时或上游错误。空列表、无权限、不支持类型和未完成分页都只是有边界的结果，不能据此断言内容不存在。
+
+CLI 只支持 URL/ID 定位和目录逐层浏览，不提供全文搜索，不支持创建、更新、删除、复制、移动或权限变更。不要输出凭据、access token 或完整敏感 URL。后续可把同一只读 bin 放入 Docker bot 容器并继承上述环境变量；当前仓库尚未提供对应 Docker 命令或文件。
+
+`npm test` 覆盖参数、输出格式、分页、内容规范化及错误映射，但不证明真实钉钉账号、权限、网络或文档可用。上线前仍需使用目标用户 `unionId` 执行 `health`，并对授权工作区完成一次真实的列表、解析和读取验证。
+
 ## 端到端验收
 
 自动测试通过不代表钉钉与 Grokbot 已真实联通。部署后必须完成：
