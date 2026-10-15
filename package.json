@@ -6,8 +6,12 @@
   "engines": {
     "node": ">=20"
   },
+  "bin": {
+    "dingtalk-grokbot-tool": "bin/dingtalk-grokbot-tool.js"
+  },
   "scripts": {
     "start": "node src/index.js",
+    "tool": "node bin/dingtalk-grokbot-tool.js",
     "test": "node --test"
   },
   "dependencies": {
