@@ -1,4 +1,6 @@
 node_modules/
 .env
+deploy/bots/*.env
+!deploy/bots/*.env.example
 npm-debug.log*
 .worktrees/

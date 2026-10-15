@@ -206,7 +206,7 @@ npm run tool -- read --node-id NODE_ID [--format json|markdown|text|blocks]
 
 退出码：`0` 成功，`1` 未预期错误，`2` 参数错误，`3` 缺少环境变量，`4` 认证失败或无权限，`5` 未找到或内容类型不支持，`6` 限流，`7` 超时或上游错误。空列表、无权限、不支持类型和未完成分页都只是有边界的结果，不能据此断言内容不存在。
 
-CLI 只支持 URL/ID 定位和目录逐层浏览，不提供全文搜索，不支持创建、更新、删除、复制、移动或权限变更。不要输出凭据、access token 或完整敏感 URL。后续若把同一只读 bin 放入 Docker bot 容器，需要向容器内启动 CLI 的进程注入上述环境变量；当前仓库尚未提供对应 Docker 命令或文件。
+CLI 只支持 URL/ID 定位和目录逐层浏览，不提供全文搜索，不支持创建、更新、删除、复制、移动或权限变更。不要输出凭据、access token 或完整敏感 URL。Docker bot 容器也包含同一只读 bin；`docker compose exec` 启动的 CLI 进程共享对应 bot 服务的环境变量。
 
 `npm test` 覆盖参数、输出格式、分页、内容规范化及错误映射，但不证明真实钉钉账号、权限、网络或文档可用。上线前仍需使用目标用户 `unionId` 执行 `health`，并对授权工作区完成一次真实的列表、解析和读取验证。
 
@@ -221,6 +221,50 @@ CLI 只支持 URL/ID 定位和目录逐层浏览，不提供全文搜索，不�
 5. 重启进程，再次验证群聊和单聊。
 
 ## 生产运行
+
+### Docker Compose：两个独立 bot
+
+Compose 示例从同一个 Dockerfile 构建一个镜像，并启动 `bot-one`、`bot-two` 两个服务。两者分别使用环境文件、日志和重启生命周期；不暴露端口。
+
+先复制示例，再分别填写真实配置。不要提交生成的 `.env` 文件：
+
+```bash
+cp deploy/bots/bot-one.env.example deploy/bots/bot-one.env
+cp deploy/bots/bot-two.env.example deploy/bots/bot-two.env
+```
+
+构建并启动：
+
+```bash
+docker compose up -d --build
+docker compose ps
+```
+
+每个容器都包含 `dingtalk-grokbot-tool`。CLI 共享该服务的进程环境，可分别检查配置和工作区：
+
+```bash
+docker compose exec bot-one dingtalk-grokbot-tool health
+docker compose exec bot-one dingtalk-grokbot-tool workspaces
+docker compose exec bot-two dingtalk-grokbot-tool health
+docker compose exec bot-two dingtalk-grokbot-tool workspaces
+```
+
+只重启一个 bot：
+
+```bash
+docker compose restart bot-one
+```
+
+镜像层和应用代码共用，但两个服务配置互不混用。容器进入运行状态只说明进程已启动，不代表钉钉 Stream 已连接，也不代表真实群聊、单聊或文档读取验收通过；仍须完成上面的“端到端验收”和目标账号的真实文档读取验证。
+
+连接 watchdog 在长期未连接或失活时退出进程，`restart: unless-stopped` 随后重启容器。若仍保留每 10 分钟主动重启策略，必须分别定向到 `bot-one` 和 `bot-two`，例如分别调度：
+
+```bash
+docker compose restart bot-one
+docker compose restart bot-two
+```
+
+### PM2
 
 可使用任一种进程守护方案：
 

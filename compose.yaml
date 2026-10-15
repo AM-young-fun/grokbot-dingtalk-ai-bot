@@ -1,0 +1,17 @@
+x-bot: &bot
+  build: .
+  image: grokbot-dingtalk-ai-bot:local
+  restart: unless-stopped
+  mem_limit: 768m
+  cpus: 1.0
+
+services:
+  bot-one:
+    <<: *bot
+    env_file:
+      - deploy/bots/bot-one.env
+
+  bot-two:
+    <<: *bot
+    env_file:
+      - deploy/bots/bot-two.env

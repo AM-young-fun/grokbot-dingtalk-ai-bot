@@ -1,0 +1,14 @@
+.git
+.gitignore
+.worktrees
+node_modules
+logs
+coverage
+npm-debug.log*
+.env
+.env.*
+!.env.example
+deploy/bots/*.env
+!deploy/bots/*.env.example
+test
+tests
