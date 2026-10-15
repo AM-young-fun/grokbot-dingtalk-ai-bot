@@ -196,7 +196,7 @@ npm run tool -- read --node-id NODE_ID [--format json|markdown|text|blocks]
 {"ok":true,"data":{}}
 ```
 
-`workspaces` 和 `nodes` 额外返回 `page.nextCursor` 与 `page.hasMore`。只要 `hasMore` 为 `true`，就必须把 `nextCursor` 传给下一次 `--cursor`；未读取所有页时不能声称结果完整。`markdown` 与 `text` 格式直接输出纯文本；`json` 返回规范化文档全量信息；`blocks` 用于保留精确块结构。需要精确内容或结构时，必须先读取 `--format json` 或 `--format blocks`，再做总结；不能先根据会丢失结构的 `markdown` 或 `text` 总结。
+`workspaces` 和 `nodes` 额外返回 `page.nextCursor` 与 `page.hasMore`。只要 `hasMore` 为 `true`，就必须把返回的 `page.nextCursor` 实际值代入 `--cursor 'NEXT_CURSOR_VALUE'` 继续请求；未读取所有页时不能声称结果完整。`markdown` 与 `text` 格式直接输出纯文本；`json` 返回经过清理和规范化的元数据、块、Markdown 与文本子集；`blocks` 返回经过清理和规范化的块子集。需要保留结构时，必须先读取 `--format json` 或 `--format blocks`，再做总结，并检查、披露 `unsupportedBlockTypes` 和规范化限制。字段可能被省略，无法保证原始文档的精确保真度，也不能声称完全一致；不能先根据结构损失更多的 `markdown` 或 `text` 总结。
 
 错误以安全 JSON 写入 stderr：
 

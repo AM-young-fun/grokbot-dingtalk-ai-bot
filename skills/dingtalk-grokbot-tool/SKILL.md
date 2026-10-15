@@ -28,7 +28,7 @@ Use only `npm run tool -- ...` from this repository. The CLI reads `DINGTALK_CLI
 - Auth or connectivity doubt: `npm run tool -- health`.
 - Workspace metadata: `npm run tool -- workspace --workspace-id WORKSPACE_ID`.
 
-For `workspaces` and `nodes`, if `page.hasMore` is true, run the same command again with `--cursor 'page.nextCursor'`. Follow every cursor before claiming a listing is complete.
+For `workspaces` and `nodes`, if `page.hasMore` is true, run the same command again with `--cursor 'NEXT_CURSOR_VALUE'`, substituting the returned `page.nextCursor` value. Follow every cursor before claiming a listing is complete.
 
 ## Choose output
 
@@ -39,12 +39,12 @@ npm run tool -- read --node-id NODE_ID --format markdown
 npm run tool -- read --node-id NODE_ID --format text
 ```
 
-- `json` (default): normalized metadata, blocks, Markdown, and text.
-- `blocks`: exact normalized structure.
+- `json` (default): sanitized, normalized metadata, blocks, Markdown, and text subset.
+- `blocks`: sanitized, normalized block subset.
 - `markdown`: best human-reading context.
 - `text`: simple extraction only.
 
-**Hard rule:** When exact or structured content matters, read `--format json` or `--format blocks` before summarizing. Never summarize from `markdown` or `text` first; those renderings can lose structure.
+**Hard rule:** When structure matters, read `--format json` or `--format blocks` before summarizing. Then inspect and disclose `unsupportedBlockTypes` and normalization limits. Fields may be omitted, so exact source fidelity is unavailable and must never be claimed. Never summarize from `markdown` or `text` first; those renderings lose more structure.
 
 Successful structured commands emit `{"ok":true,"data":...}`; paginated commands also emit `page`. Markdown/text reads emit plain stdout. Errors emit safe JSON on stderr.
 
