@@ -1,0 +1,4 @@
+{
+  "nodes": [{ "nodeId": "node-1", "name": "Runbook", "type": "DOC" }],
+  "nextToken": "node-page-2"
+}

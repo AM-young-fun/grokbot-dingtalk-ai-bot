@@ -1,0 +1,4 @@
+{
+  "workspaces": [{ "workspaceId": "ws-1", "name": "Engineering" }],
+  "nextToken": "workspace-page-2"
+}
