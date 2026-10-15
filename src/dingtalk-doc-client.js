@@ -78,7 +78,7 @@ async function readBoundedBody(response, maxResponseBytes, timeout) {
       const chunk = value instanceof Uint8Array ? value : new Uint8Array(value);
       length += chunk.byteLength;
       if (length > maxResponseBytes) {
-        await reader.cancel();
+        void reader.cancel().catch(() => {});
         throw new ToolError('UPSTREAM_ERROR', 'DingTalk response exceeded size limit');
       }
       chunks.push(chunk);

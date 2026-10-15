@@ -201,6 +201,27 @@ test('stops and cancels streamed body as soon as cumulative bytes exceed limit',
   assert.equal(chunks.length, 1);
 });
 
+test('size overflow rejects promptly when stream cancellation never settles', async () => {
+  let cancelCalled = false;
+  const body = new ReadableStream({
+    pull(controller) {
+      controller.enqueue(new Uint8Array(11));
+    },
+    cancel() {
+      cancelCalled = true;
+      return new Promise(() => {});
+    },
+  }, { highWaterMark: 0 });
+  const client = harness([new Response(body)], { maxResponseBytes: 10, timeoutMs: 1_000 }).client;
+
+  const outcome = await Promise.race([
+    client.getNode('node').then(() => 'resolved', (error) => error.code),
+    new Promise((resolve) => setTimeout(() => resolve('still-pending'), 25)),
+  ]);
+  assert.equal(outcome, 'UPSTREAM_ERROR');
+  assert.equal(cancelCalled, true);
+});
+
 test('rejects malformed JSON and bounds response body reading by timeout', async () => {
   const malformed = harness([new Response('not-json')]).client;
   await assert.rejects(malformed.getNode('node'), (error) => error.code === 'UPSTREAM_ERROR');
