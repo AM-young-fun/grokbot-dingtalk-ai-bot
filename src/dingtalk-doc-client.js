@@ -2,6 +2,7 @@ import { ToolError } from './dingtalk-tool-error.js';
 
 const API_ORIGIN = 'https://api.dingtalk.com';
 const SAFE_DOC_HOSTS = new Set(['alidocs.dingtalk.com', 'docs.dingtalk.com']);
+const SENSITIVE_URL_KEY = /token|secret|access_token|authorization|credential|code|signature|sign|ticket|auth|session|webhook/i;
 
 function invalid(message) {
   return new ToolError('INVALID_ARGUMENT', message);
@@ -32,6 +33,9 @@ function validateDocumentUrl(value) {
   }
   if (parsed.protocol !== 'https:' || parsed.username || parsed.password
       || !SAFE_DOC_HOSTS.has(parsed.hostname) || (parsed.port && parsed.port !== '443')) {
+    throw invalid('url must be a safe DingTalk document URL');
+  }
+  if (parsed.hash || [...parsed.searchParams.keys()].some((key) => SENSITIVE_URL_KEY.test(key))) {
     throw invalid('url must be a safe DingTalk document URL');
   }
   return value;

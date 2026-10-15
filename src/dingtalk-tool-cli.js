@@ -2,7 +2,7 @@ import { parseArgs } from 'node:util';
 
 import { createTokenProvider } from './dingtalk-auth.js';
 import { createDingTalkDocClient } from './dingtalk-doc-client.js';
-import { normalizeDocument } from './dingtalk-doc-content.js';
+import { normalizeDocument, sanitizeOutput } from './dingtalk-doc-content.js';
 import { loadToolConfig } from './dingtalk-tool-config.js';
 import { ToolError, exitCodeFor, toErrorEnvelope } from './dingtalk-tool-error.js';
 
@@ -99,6 +99,7 @@ function success(result) {
 
 function actualNode(result) {
   if (!result || typeof result !== 'object' || Array.isArray(result)) return result;
+  if (result.result && typeof result.result === 'object') return actualNode(result.result);
   if (result.data?.node && typeof result.data.node === 'object') return result.data.node;
   if (result.node && typeof result.node === 'object') return result.node;
   if (result.data && typeof result.data === 'object' && !Array.isArray(result.data)) return result.data;
@@ -107,6 +108,9 @@ function actualNode(result) {
 
 function actualBlocks(result) {
   if (Array.isArray(result)) return result;
+  if (Array.isArray(result?.result?.data)) return result.result.data;
+  if (Array.isArray(result?.result?.blocks)) return result.result.blocks;
+  if (Array.isArray(result?.result?.data?.blocks)) return result.result.data.blocks;
   if (Array.isArray(result?.blocks)) return result.blocks;
   if (Array.isArray(result?.data?.blocks)) return result.data.blocks;
   if (Array.isArray(result?.data)) return result.data;
@@ -114,11 +118,10 @@ function actualBlocks(result) {
 }
 
 function assertDocumentType(node) {
-  const marker = [node?.contentType, node?.type, node?.nodeType]
-    .find((value) => typeof value === 'string' && value.trim());
-  if (!marker) return;
-  const canonical = marker.replace(/[^a-z0-9]/gi, '').toLowerCase();
-  if (!['alidoc', 'doc', 'document', 'dingtalkdoc'].includes(canonical)) {
+  const markers = [node?.category, node?.contentType, node?.fileType, node?.nodeType, node?.type]
+    .filter((value) => typeof value === 'string' && value.trim())
+    .map((value) => value.replace(/[^a-z0-9]/gi, '').toLowerCase());
+  if (!markers.some((marker) => ['alidoc', 'doc', 'document', 'dingtalkdoc'].includes(marker))) {
     throw new ToolError('UNSUPPORTED_CONTENT_TYPE', 'Node content type is not a DingTalk document');
   }
 }
@@ -186,7 +189,7 @@ export async function runCli(argv, {
       await readDocument(client, values, stdout);
       return 0;
     }
-    writeJson(stdout, success(result));
+    writeJson(stdout, sanitizeOutput(success(result)));
     return 0;
   } catch (error) {
     writeJson(stderr, toErrorEnvelope(error));

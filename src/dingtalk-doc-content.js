@@ -1,35 +1,70 @@
 const SAFE_FIELDS = new Set([
-  'id', 'index', 'type', 'kind', 'text', 'content', 'children', 'element', 'elements', 'items',
+  'id', 'index', 'type', 'kind', 'blockType', 'category', 'fileType', 'nodeType',
+  'text', 'content', 'children', 'element', 'elements', 'items',
   'rows', 'cells', 'url', 'title', 'language', 'level', 'name', 'value', 'contentType',
   'docKey', 'nodeId', 'workspaceId', 'parentNodeId',
+  'paragraph', 'heading', 'unorderedList', 'orderedList', 'quote', 'codeBlock', 'link', 'table',
 ]);
-const SECRET_KEY = /token|secret|authorization|credential|cookie|webhook|app[_-]?secret/i;
+const SECRET_KEY = /token|secret|authorization|credential|cookie|webhook|session|ticket|signature|(?:^|[_-])sign(?:$|[_-])|app[_-]?secret/i;
+const OUTPUT_SECRET_KEY = /token|secret|access_token|authorization|credential|code|signature|sign|ticket|auth|session|webhook/i;
+const SENSITIVE_QUERY_KEY = /token|secret|access_token|authorization|credential|code|signature|sign|ticket|auth|session|webhook/i;
 const MAX_DEPTH = 64;
 const CIRCULAR_MARKER = '[Circular]';
 const DEPTH_MARKER = '[Max depth]';
 
-function sanitizeValue(value, ancestors = new WeakSet(), depth = 0) {
+function sanitizeUrl(value) {
+  if (typeof value !== 'string') return '';
+  try {
+    const parsed = new URL(value);
+    if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) return '';
+    let changed = parsed.hash !== '';
+    for (const key of [...parsed.searchParams.keys()]) {
+      if (SENSITIVE_QUERY_KEY.test(key)) {
+        parsed.searchParams.delete(key);
+        changed = true;
+      }
+    }
+    parsed.hash = '';
+    return changed ? parsed.toString() : value;
+  } catch {
+    return '';
+  }
+}
+
+function sanitizeRecursive(value, { allowlist = null, secretKey = SECRET_KEY } = {}, ancestors = new WeakSet(), depth = 0, key = '') {
   if (depth >= MAX_DEPTH) return DEPTH_MARKER;
-  if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) return value;
+  if (value === null || ['number', 'boolean'].includes(typeof value)) return value;
+  if (typeof value === 'string') {
+    const looksLikeUrl = /url|href|uri/i.test(key) || /^[a-z][a-z\d+.-]*:/i.test(value);
+    return looksLikeUrl ? sanitizeUrl(value) : value;
+  }
   if (!value || typeof value !== 'object') return undefined;
 
   if (ancestors.has(value)) return CIRCULAR_MARKER;
   ancestors.add(value);
   try {
     if (Array.isArray(value)) {
-      return value.map((child) => sanitizeValue(child, ancestors, depth + 1));
+      return value.map((child) => sanitizeRecursive(child, { allowlist, secretKey }, ancestors, depth + 1));
     }
 
     const output = {};
     for (const [key, child] of Object.entries(value)) {
-      if (SECRET_KEY.test(key) || !SAFE_FIELDS.has(key)) continue;
-      const safeChild = sanitizeValue(child, ancestors, depth + 1);
+      if (secretKey.test(key) || (allowlist && !allowlist.has(key))) continue;
+      const safeChild = sanitizeRecursive(child, { allowlist, secretKey }, ancestors, depth + 1, key);
       if (safeChild !== undefined) output[key] = safeChild;
     }
     return output;
   } finally {
     ancestors.delete(value);
   }
+}
+
+function sanitizeValue(value) {
+  return sanitizeRecursive(value, { allowlist: SAFE_FIELDS });
+}
+
+export function sanitizeOutput(value) {
+  return sanitizeRecursive(value, { secretKey: OUTPUT_SECRET_KEY });
 }
 
 export function sanitizeBlocks(blocks) {
@@ -39,8 +74,8 @@ export function sanitizeBlocks(blocks) {
 
 function blockType(block) {
   if (!block || typeof block !== 'object') return 'unknown';
-  const value = typeof block.type === 'string' && block.type.trim()
-    ? block.type : block.kind;
+  const value = [block.blockType, block.type, block.kind]
+    .find((candidate) => typeof candidate === 'string' && candidate.trim());
   return typeof value === 'string' && value.trim() ? value.trim() : 'unknown';
 }
 
@@ -102,17 +137,31 @@ function inlineText(value) {
 }
 
 function contentOf(block) {
-  return block?.content ?? block?.children ?? block?.elements ?? block?.element ?? block?.text ?? block?.value ?? '';
+  const payload = payloadOf(block);
+  return payload?.content ?? payload?.children ?? payload?.elements ?? payload?.element
+    ?? payload?.text ?? payload?.value ?? '';
+}
+
+function payloadOf(block) {
+  if (!block || typeof block !== 'object') return block;
+  const type = canonicalType(block);
+  const payloadKeys = {
+    paragraph: 'paragraph', heading: 'heading', unordered_list: 'unorderedList',
+    ordered_list: 'orderedList', quote: 'quote', code_block: 'codeBlock', link: 'link', table: 'table',
+  };
+  return block[payloadKeys[type]] ?? block;
 }
 
 function listItems(block) {
-  return Array.isArray(block?.items) ? block.items
-    : Array.isArray(block?.children) ? block.children : [];
+  const payload = payloadOf(block);
+  return Array.isArray(payload?.items) ? payload.items
+    : Array.isArray(payload?.children) ? payload.children : [];
 }
 
 function tableRows(block, renderCell) {
-  if (!Array.isArray(block?.rows)) return [];
-  return block.rows.map((row) => {
+  const payload = payloadOf(block);
+  if (!Array.isArray(payload?.rows)) return [];
+  return payload.rows.map((row) => {
     const cells = Array.isArray(row) ? row : Array.isArray(row?.cells) ? row.cells : [];
     return cells.map(renderCell);
   });
@@ -137,7 +186,8 @@ function markdownBlock(block) {
   const type = canonicalType(block);
   if (type === 'paragraph') return inlineMarkdown(contentOf(block));
   if (type === 'heading') {
-    const level = Number.isInteger(block?.level) ? Math.min(6, Math.max(1, block.level)) : 1;
+    const levelValue = payloadOf(block)?.level;
+    const level = Number.isInteger(levelValue) ? Math.min(6, Math.max(1, levelValue)) : 1;
     return `${'#'.repeat(level)} ${inlineMarkdown(contentOf(block))}`.trimEnd();
   }
   if (['unordered_list', 'bullet_list', 'ul'].includes(type)) {
@@ -153,10 +203,11 @@ function markdownBlock(block) {
     const code = plain(contentOf(block));
     const longest = longestBacktickRun(code);
     const fence = '`'.repeat(Math.max(3, longest + 1));
-    const language = typeof block?.language === 'string' ? block.language.replace(/[^\w.+-]/g, '') : '';
+    const languageValue = payloadOf(block)?.language;
+    const language = typeof languageValue === 'string' ? languageValue.replace(/[^\w.+-]/g, '') : '';
     return `${fence}${language}\n${code}\n${fence}`;
   }
-  if (type === 'link') return inlineMarkdown(block);
+  if (type === 'link') return inlineMarkdown(payloadOf(block));
   if (type === 'table') {
     const rows = tableRows(block, (cell) => inlineMarkdown(cell).replace(/\n/g, '<br>'));
     if (!rows.length) return '';
@@ -178,7 +229,7 @@ function textBlock(block) {
   if (['ordered_list', 'numbered_list', 'ol'].includes(type)) {
     return listItems(block).map((item, index) => `${index + 1}. ${inlineText(contentOf(item))}`).join('\n');
   }
-  if (type === 'link') return inlineText(block);
+  if (type === 'link') return inlineText(payloadOf(block));
   if (type === 'table') return tableRows(block, inlineText).map((row) => row.join('\t')).join('\n');
   return `[Unsupported block: ${rawType}]`;
 }
@@ -206,7 +257,7 @@ export function normalizeDocument({ node, blocks } = {}) {
   }
   const safeNode = sanitizeValue(node);
   const normalizedNode = safeNode && !Array.isArray(safeNode) && typeof safeNode === 'object' ? safeNode : {};
-  const contentType = [normalizedNode.contentType, normalizedNode.type]
+  const contentType = [normalizedNode.contentType, normalizedNode.category, normalizedNode.fileType, normalizedNode.type]
     .find((value) => typeof value === 'string' && value.trim() !== '') ?? null;
   return {
     node: normalizedNode,

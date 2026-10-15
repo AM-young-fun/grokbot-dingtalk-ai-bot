@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import {
@@ -18,6 +19,40 @@ const representativeBlocks = [
   { type: 'link', title: 'DingTalk', url: 'https://docs.dingtalk.com/a_(b)' },
   { type: 'table', rows: [{ cells: [{ text: 'A' }, { text: 'B|C' }] }, { cells: ['1', '2'] }] },
 ];
+
+const realBlocks = JSON.parse(readFileSync(new URL('./fixtures/dingtalk-real-blocks.json', import.meta.url)));
+
+test('normalizes and renders realistic blockType payload objects', () => {
+  const result = normalizeDocument({
+    node: { type: 'FILE', category: 'ALIDOC', nodeId: 'real-node', title: 'Real' },
+    blocks: realBlocks,
+  });
+
+  assert.equal(result.markdown, [
+    'Hello ', '## Real document', '- one\n- two', '1. first', '> quoted',
+    '```js\nconst x = 1;\n```', '[safe](https://example.com/path?keep=yes)',
+    '| A | B |\n| --- | --- |\n| 1 | 2 |', '[Unsupported block: mindMap]',
+  ].join('\n\n'));
+  assert.equal(result.text.includes('Real document'), true);
+  assert.deepEqual(result.unsupportedBlockTypes, ['mindMap']);
+  assert.equal(result.blocks[0].blockType, 'paragraph');
+  assert.deepEqual(result.blocks[0].paragraph, { text: 'Hello ' });
+  assert.deepEqual(result.blocks[8], { blockType: 'mindMap' });
+  assert.doesNotMatch(JSON.stringify(result), /hide|#secret|token=/i);
+});
+
+test('sanitizes URL credentials, unsafe schemes, sensitive query params, and fragments', () => {
+  const safe = sanitizeBlocks([
+    { type: 'link', url: 'https://example.com/a?keep=1&access_token=hide&signature=hide#frag' },
+    { type: 'link', url: 'https://user:pass@example.com/private' },
+    { type: 'link', url: 'javascript:alert(1)' },
+  ]);
+  assert.deepEqual(safe, [
+    { type: 'link', url: 'https://example.com/a?keep=1' },
+    { type: 'link', url: '' },
+    { type: 'link', url: '' },
+  ]);
+});
 
 test('renders supported blocks as deterministic Markdown and readable text', () => {
   assert.equal(blocksToMarkdown(representativeBlocks), [

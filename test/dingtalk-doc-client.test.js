@@ -91,6 +91,9 @@ test('resolveUrl rejects unsafe URLs before token or fetch', async () => {
     'https://user:pass@docs.dingtalk.com/a',
     'https://docs.dingtalk.com:444/a',
     'https://docs.dingtalk.com.evil.test/a',
+    'https://docs.dingtalk.com/a?access_token=hide',
+    'https://docs.dingtalk.com/a?signature=hide',
+    'https://docs.dingtalk.com/a#credential-fragment',
     'not a url',
   ];
   const { client, calls, tokenCalls } = harness([]);

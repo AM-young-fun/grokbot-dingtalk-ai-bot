@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { runCli } from '../src/dingtalk-tool-cli.js';
@@ -12,6 +13,7 @@ const env = {
   DINGTALK_CLIENT_SECRET: 'secret',
   DINGTALK_OPERATOR_ID: 'operator',
 };
+const realBlocks = JSON.parse(readFileSync(new URL('./fixtures/dingtalk-real-blocks.json', import.meta.url)));
 
 function harness(client, overrides = {}) {
   let stdout = '';
@@ -134,6 +136,66 @@ test('read gets node and blocks, unwraps common responses, and emits normalized 
   assert.equal(output.ok, true);
   assert.equal(output.data.markdown, 'Hello');
   assert.deepEqual(output.data.blocks, [{ type: 'paragraph', content: 'Hello' }]);
+});
+
+test('read accepts realistic FILE plus ALIDOC node and result data blocks envelope', async () => {
+  const h = harness({
+    async getNode() {
+      return { result: { data: { node: { nodeId: 'n-real', docKey: 'doc-real', type: 'FILE', category: 'ALIDOC' } } } };
+    },
+    async getBlocks(key) {
+      assert.equal(key, 'doc-real');
+      return { result: { data: realBlocks } };
+    },
+  });
+  assert.equal(await h.run(['read', '--node-id', 'n-real']), 0);
+  const output = JSON.parse(h.output().stdout);
+  assert.match(output.data.markdown, /Real document/);
+  assert.deepEqual(output.data.unsupportedBlockTypes, ['mindMap']);
+});
+
+test('read fails safely for unknown and confirmed non-ALIDOC node metadata', async () => {
+  for (const node of [
+    { nodeId: 'unknown', type: 'FILE' },
+    { nodeId: 'sheet', type: 'FILE', category: 'WORKBOOK' },
+    { nodeId: 'pdf', fileType: 'PDF' },
+  ]) {
+    const h = harness({
+      async getNode() { return { result: { node } }; },
+      async getBlocks() { throw new Error('must not load blocks'); },
+    });
+    assert.equal(await h.run(['read', '--node-id', node.nodeId]), 5);
+    assert.equal(JSON.parse(h.output().stderr).error.code, 'UNSUPPORTED_CONTENT_TYPE');
+  }
+});
+
+test('sanitizes nested secrets and credential-bearing URLs in every JSON command output', async () => {
+  const dangerous = {
+    id: 'keep-id', name: 'keep-name', page: { nextCursor: 'keep-page' },
+    accessToken: 'hide-token', nested: {
+      secret: 'hide-secret',
+      url: 'https://user:pass@example.com/a?authorization=hide&keep=1#frag',
+      publicUrl: 'https://example.com/a?keep=1&ticket=hide#frag',
+    },
+  };
+  const client = {
+    async health() { return dangerous; },
+    async listWorkspaces() { return { data: [dangerous], page: dangerous.page }; },
+    async getWorkspace() { return dangerous; },
+    async listNodes() { return { data: [dangerous], page: dangerous.page }; },
+    async getNode() { return dangerous; },
+    async resolveUrl() { return dangerous; },
+  };
+  for (const argv of [
+    ['health'], ['workspaces'], ['workspace', '--workspace-id', 'w'],
+    ['nodes', '--workspace-id', 'w'], ['node', '--node-id', 'n'],
+    ['resolve', '--url', 'https://docs.dingtalk.com/a'],
+  ]) {
+    const h = harness(client);
+    assert.equal(await h.run(argv), 0);
+    assert.doesNotMatch(h.output().stdout, /hide-|user:pass|authorization=|ticket=|#frag/i);
+    assert.match(h.output().stdout, /keep-id|keep-page/);
+  }
 });
 
 test('read supports blocks, markdown, and text formats with node-id doc key fallback', async () => {
