@@ -170,6 +170,21 @@ test('read accepts dentryUuid and rejects confirmed non-document content types',
   assert.equal(JSON.parse(rejected.output().stderr).error.code, 'UNSUPPORTED_CONTENT_TYPE');
 });
 
+test('read rejects malformed block response envelopes instead of returning an empty document', async () => {
+  for (const response of [null, { error: {} }, { data: { unexpected: [] } }]) {
+    const h = harness({
+      async getNode() { return { nodeId: 'n', docKey: 'doc', contentType: 'ALIDOC' }; },
+      async getBlocks() { return response; },
+    });
+    assert.equal(await h.run(['read', '--node-id', 'n']), 7);
+    assert.equal(h.output().stdout, '');
+    assert.deepEqual(JSON.parse(h.output().stderr), {
+      ok: false,
+      error: { code: 'UPSTREAM_ERROR', message: 'DingTalk returned malformed document blocks' },
+    });
+  }
+});
+
 test('writes safe ToolError and unexpected error envelopes only to stderr', async () => {
   for (const [error, code, exitCode] of [
     [new ToolError('RATE_LIMITED', 'Slow down', { retryAfter: '3' }), 'RATE_LIMITED', 6],

@@ -110,7 +110,7 @@ function actualBlocks(result) {
   if (Array.isArray(result?.blocks)) return result.blocks;
   if (Array.isArray(result?.data?.blocks)) return result.data.blocks;
   if (Array.isArray(result?.data)) return result.data;
-  return [];
+  throw new ToolError('UPSTREAM_ERROR', 'DingTalk returned malformed document blocks');
 }
 
 function assertDocumentType(node) {
