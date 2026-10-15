@@ -4,24 +4,37 @@ const SAFE_FIELDS = new Set([
   'docKey', 'nodeId', 'workspaceId', 'parentNodeId',
 ]);
 const SECRET_KEY = /token|secret|authorization|credential|cookie|webhook|app[_-]?secret/i;
+const MAX_DEPTH = 64;
+const CIRCULAR_MARKER = '[Circular]';
+const DEPTH_MARKER = '[Max depth]';
 
-function sanitizeValue(value) {
-  if (Array.isArray(value)) return value.map(sanitizeValue);
+function sanitizeValue(value, ancestors = new WeakSet(), depth = 0) {
+  if (depth >= MAX_DEPTH) return DEPTH_MARKER;
   if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) return value;
   if (!value || typeof value !== 'object') return undefined;
 
-  const output = {};
-  for (const [key, child] of Object.entries(value)) {
-    if (SECRET_KEY.test(key) || !SAFE_FIELDS.has(key)) continue;
-    const safeChild = sanitizeValue(child);
-    if (safeChild !== undefined) output[key] = safeChild;
+  if (ancestors.has(value)) return CIRCULAR_MARKER;
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      return value.map((child) => sanitizeValue(child, ancestors, depth + 1));
+    }
+
+    const output = {};
+    for (const [key, child] of Object.entries(value)) {
+      if (SECRET_KEY.test(key) || !SAFE_FIELDS.has(key)) continue;
+      const safeChild = sanitizeValue(child, ancestors, depth + 1);
+      if (safeChild !== undefined) output[key] = safeChild;
+    }
+    return output;
+  } finally {
+    ancestors.delete(value);
   }
-  return output;
 }
 
 export function sanitizeBlocks(blocks) {
   if (!Array.isArray(blocks)) return [];
-  return blocks.map(sanitizeValue);
+  return blocks.map((block) => sanitizeValue(block));
 }
 
 function blockType(block) {
@@ -51,6 +64,10 @@ function plain(value) {
   return '';
 }
 
+function escapeMarkdown(value) {
+  return String(value).replace(/([\\`*_[\]{}()#+\-.!><|])/g, '\\$1');
+}
+
 function safeMarkdownUrl(value) {
   if (typeof value !== 'string') return null;
   try {
@@ -64,11 +81,12 @@ function safeMarkdownUrl(value) {
 
 function inlineMarkdown(value) {
   if (Array.isArray(value)) return value.map(inlineMarkdown).join('');
-  if (!value || typeof value !== 'object') return plain(value);
+  if (!value || typeof value !== 'object') return escapeMarkdown(plain(value));
   if (canonicalType(value) === 'link' || value.url !== undefined) {
     const label = plain(value.text ?? value.title ?? value.content) || plain(value.url);
     const url = safeMarkdownUrl(value.url);
-    return url ? `[${label.replace(/([\[\]])/g, '\\$1')}](${url})` : label;
+    const safeLabel = escapeMarkdown(label);
+    return url ? `[${safeLabel}](${url})` : safeLabel;
   }
   return inlineMarkdown(value.text ?? value.content ?? value.children ?? value.elements ?? value.element ?? value.value);
 }
@@ -100,6 +118,20 @@ function tableRows(block, renderCell) {
   });
 }
 
+function longestBacktickRun(value) {
+  let longest = 0;
+  let current = 0;
+  for (const character of value) {
+    if (character === '`') {
+      current += 1;
+      if (current > longest) longest = current;
+    } else {
+      current = 0;
+    }
+  }
+  return longest;
+}
+
 function markdownBlock(block) {
   const rawType = blockType(block);
   const type = canonicalType(block);
@@ -119,21 +151,21 @@ function markdownBlock(block) {
   }
   if (['code_block', 'code'].includes(type)) {
     const code = plain(contentOf(block));
-    const longest = Math.max(0, ...[...code.matchAll(/`+/g)].map(([ticks]) => ticks.length));
+    const longest = longestBacktickRun(code);
     const fence = '`'.repeat(Math.max(3, longest + 1));
     const language = typeof block?.language === 'string' ? block.language.replace(/[^\w.+-]/g, '') : '';
     return `${fence}${language}\n${code}\n${fence}`;
   }
   if (type === 'link') return inlineMarkdown(block);
   if (type === 'table') {
-    const rows = tableRows(block, (cell) => inlineMarkdown(cell).replace(/\|/g, '\\|').replace(/\n/g, '<br>'));
+    const rows = tableRows(block, (cell) => inlineMarkdown(cell).replace(/\n/g, '<br>'));
     if (!rows.length) return '';
     const width = Math.max(1, ...rows.map((row) => row.length));
     const normalized = rows.map((row) => [...row, ...Array(Math.max(0, width - row.length)).fill('')]);
     return [normalized[0], Array(width).fill('---'), ...normalized.slice(1)]
       .map((row) => `| ${row.join(' | ')} |`).join('\n');
   }
-  return `[Unsupported block: ${rawType}]`;
+  return `[Unsupported block: ${escapeMarkdown(rawType)}]`;
 }
 
 function textBlock(block) {
@@ -174,9 +206,11 @@ export function normalizeDocument({ node, blocks } = {}) {
   }
   const safeNode = sanitizeValue(node);
   const normalizedNode = safeNode && !Array.isArray(safeNode) && typeof safeNode === 'object' ? safeNode : {};
+  const contentType = [normalizedNode.contentType, normalizedNode.type]
+    .find((value) => typeof value === 'string' && value.trim() !== '') ?? null;
   return {
     node: normalizedNode,
-    contentType: normalizedNode.contentType ?? normalizedNode.type ?? null,
+    contentType,
     markdown: safeBlocks.map(markdownBlock).join('\n\n'),
     text: safeBlocks.map(textBlock).join('\n\n'),
     blocks: safeBlocks,

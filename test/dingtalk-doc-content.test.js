@@ -56,6 +56,29 @@ test('accepts camelCase block type names from DingTalk payload variants', () => 
   ]), '1. item\n\n```\nx\n```');
 });
 
+test('escapes Markdown syntax from plain text leaves and rejects unsafe structured links', () => {
+  const blocks = [
+    { type: 'paragraph', text: '![click](javascript:alert(1)) [data](data:text/html,bad) <img src=x>' },
+    { type: 'heading', level: 2, text: '# title *bold*' },
+    { type: 'quote', text: '> injected' },
+    { type: 'unorderedList', items: [{ text: '[item](javascript:bad)' }] },
+    { type: 'link', title: '[unsafe](javascript:bad)', url: 'javascript:alert(1)' },
+    { type: 'link', title: 'data image', url: 'data:image/svg+xml,bad' },
+    { type: 'table', rows: [{ cells: [{ text: '*cell*|next' }] }] },
+  ];
+
+  assert.equal(blocksToMarkdown(blocks), [
+    '\\!\\[click\\]\\(javascript:alert\\(1\\)\\) \\[data\\]\\(data:text/html,bad\\) \\<img src=x\\>',
+    '## \\# title \\*bold\\*',
+    '> \\> injected',
+    '- \\[item\\]\\(javascript:bad\\)',
+    '\\[unsafe\\]\\(javascript:bad\\)',
+    'data image',
+    '| \\*cell\\*\\|next |\n| --- |',
+  ].join('\n\n'));
+  assert.doesNotMatch(blocksToMarkdown(blocks), /\]\((?:javascript|data):/i);
+});
+
 test('sanitizes recursively by allowlist, strips secret-like keys, and does not mutate input', () => {
   const input = [{
     id: 'safe', type: 'paragraph', index: 1, text: 'visible', ignored: 'drop', tokenized: 'drop-too',
@@ -133,8 +156,32 @@ test('handles null and malformed block inputs safely and deterministically', () 
   });
 });
 
+test('sanitization handles cycles and excessive nesting deterministically', () => {
+  const cyclic = { type: 'paragraph', text: 'safe' };
+  cyclic.children = [cyclic];
+  let deep = { text: 'bottom' };
+  for (let index = 0; index < 80; index += 1) deep = { content: deep };
+
+  assert.doesNotThrow(() => sanitizeBlocks([cyclic, deep]));
+  const first = sanitizeBlocks([cyclic, deep]);
+  const second = sanitizeBlocks([cyclic, deep]);
+  assert.deepEqual(first, second);
+  assert.deepEqual(first[0], { type: 'paragraph', text: 'safe', children: ['[Circular]'] });
+  assert.match(JSON.stringify(first[1]), /\[Max depth\]/);
+});
+
+test('renders very large code blocks without argument-list overflow', () => {
+  const code = '`x'.repeat(150_000);
+  const markdown = blocksToMarkdown([{ type: 'codeBlock', language: 'js', content: code }]);
+  assert.equal(markdown.length, code.length + 10);
+  assert.equal(markdown.slice(0, 6), '```js\n');
+  assert.equal(markdown.slice(-4), '\n```');
+});
+
 test('normalizes contentType from sanitized node metadata with type fallback', () => {
   assert.equal(normalizeDocument({ node: { contentType: 'sheet', type: 'document' }, blocks: [] }).contentType, 'sheet');
   assert.equal(normalizeDocument({ node: { type: 'document' }, blocks: [] }).contentType, 'document');
+  assert.equal(normalizeDocument({ node: { contentType: '', type: 'document' }, blocks: [] }).contentType, 'document');
+  assert.equal(normalizeDocument({ node: { contentType: 4, type: '  ' }, blocks: [] }).contentType, null);
   assert.equal(normalizeDocument({ node: {}, blocks: [] }).contentType, null);
 });
