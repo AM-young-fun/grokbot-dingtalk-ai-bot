@@ -208,7 +208,63 @@ npm run tool -- read --node-id NODE_ID [--format json|markdown|text|blocks]
 
 CLI 只支持 URL/ID 定位和目录逐层浏览，不提供全文搜索，不支持创建、更新、删除、复制、移动或权限变更。不要输出凭据、access token 或完整敏感 URL。Docker bot 容器也包含同一只读 bin；`docker compose exec` 启动的 CLI 进程共享对应 bot 服务的环境变量。
 
+只读证明的范围是知识库 CLI，不是整个 bridge：`src/dingtalk-doc-client.js` 的文档接口均为 GET，只有 URL 解析使用 `queryByUrl` POST；`src/dingtalk-auth.js` 另有一个非内容写入的 token POST。现有 bridge 的 reply、emotion 和 webhook POST 属于消息处理，不是知识库内容写入。可用以下限定范围的命令复核；结果应只包含 token POST 和 `queryByUrl` POST，不应包含 PUT、PATCH、DELETE、内容写入、复制或移动操作：
+
+```bash
+rg -n "method:\s*['\"](?:POST|PUT|PATCH|DELETE)['\"]|overwriteContent|appendText|/copy|/move" \
+  src/dingtalk-auth.js src/dingtalk-doc-client.js bin/dingtalk-grokbot-tool.js
+```
+
 `npm test` 覆盖参数、输出格式、分页、内容规范化及错误映射，但不证明真实钉钉账号、权限、网络或文档可用。上线前仍需使用目标用户 `unionId` 执行 `health`，并对授权工作区完成一次真实的列表、解析和读取验证。
+
+### 知识库 CLI 真实环境验收清单
+
+以下命令只是待执行的验收顺序，不表示已经执行，也不构成真实钉钉权限、数据、容器隔离或重启行为的证明。必须注入两个 bot 的真实独立配置，逐项检查实际返回值，并用真实值替换所有大写占位符：
+
+```bash
+# 1. 两个实例分别验证认证和网络
+docker compose exec bot-one dingtalk-grokbot-tool health
+docker compose exec bot-two dingtalk-grokbot-tool health
+
+# 2. 遍历所有 workspace 页；hasMore=true 时替换并继续 NEXT_CURSOR_VALUE
+docker compose exec bot-one dingtalk-grokbot-tool workspaces --limit 20
+docker compose exec bot-one dingtalk-grokbot-tool workspaces --limit 20 \
+  --cursor 'NEXT_CURSOR_VALUE'
+
+# 3. 遍历根节点和子节点；hasMore=true 时替换并继续 NEXT_CURSOR_VALUE
+docker compose exec bot-one dingtalk-grokbot-tool nodes \
+  --workspace-id 'WORKSPACE_ID' --limit 50
+docker compose exec bot-one dingtalk-grokbot-tool nodes \
+  --workspace-id 'WORKSPACE_ID' --parent-node-id 'PARENT_NODE_ID' \
+  --limit 50 --cursor 'NEXT_CURSOR_VALUE'
+
+# 4. 解析真实 URL，并把返回的 nodeId 用于后续读取
+docker compose exec bot-one dingtalk-grokbot-tool resolve \
+  --url 'https://docs.dingtalk.com/REAL_DOCUMENT_URL'
+
+# 5. 检查四种输出；先检查 json 的 unsupportedBlockTypes
+docker compose exec bot-one dingtalk-grokbot-tool read --node-id 'NODE_ID' --format json
+docker compose exec bot-one dingtalk-grokbot-tool read --node-id 'NODE_ID' --format blocks
+docker compose exec bot-one dingtalk-grokbot-tool read --node-id 'NODE_ID' --format markdown
+docker compose exec bot-one dingtalk-grokbot-tool read --node-id 'NODE_ID' --format text
+
+# 6. 使用已知无权节点；预期 stderr code 为 DOCUMENT_FORBIDDEN、退出码为 4
+docker compose exec bot-one dingtalk-grokbot-tool node \
+  --node-id 'KNOWN_UNAUTHORIZED_NODE_ID'
+
+# 7. 验证两个容器各自只能看到预期授权范围，不混用配置
+docker compose exec bot-one dingtalk-grokbot-tool workspaces --limit 20
+docker compose exec bot-two dingtalk-grokbot-tool workspaces --limit 20
+
+# 8. 记录 bot-two 状态，只重启 bot-one，再确认 bot-two 未重启且仍可访问
+bot_two_id=$(docker compose ps -q bot-two)
+docker inspect --format '{{.State.StartedAt}} {{.RestartCount}}' "$bot_two_id"
+docker compose restart bot-one
+docker compose ps
+docker inspect --format '{{.State.StartedAt}} {{.RestartCount}}' "$bot_two_id"
+docker compose exec bot-one dingtalk-grokbot-tool health
+docker compose exec bot-two dingtalk-grokbot-tool health
+```
 
 ## 端到端验收
 
@@ -226,16 +282,17 @@ CLI 只支持 URL/ID 定位和目录逐层浏览，不提供全文搜索，不�
 
 Compose 示例从同一个 Dockerfile 构建一个镜像，并启动 `bot-one`、`bot-two` 两个服务。两者分别使用环境文件、日志和重启生命周期；不暴露端口。
 
-先复制示例，再分别填写真实配置。不要提交生成的 `.env` 文件：
+全新 checkout 不包含被忽略的本地 env 文件，因此在创建它们之前，`docker compose config` 和 `docker compose up` 会因找不到 `deploy/bots/bot-one.env` 或 `deploy/bots/bot-two.env` 而失败。必须先复制或创建两个文件，再分别填写真实且独立的配置。不要提交生成的 `.env` 文件：
 
 ```bash
 cp deploy/bots/bot-one.env.example deploy/bots/bot-one.env
 cp deploy/bots/bot-two.env.example deploy/bots/bot-two.env
 ```
 
-构建并启动：
+确认配置可解析，再构建并启动：
 
 ```bash
+docker compose config
 docker compose up -d --build
 docker compose ps
 ```
